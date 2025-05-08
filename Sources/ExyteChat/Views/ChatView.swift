@@ -211,7 +211,7 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
             .onChange(of: keyboardState.isShown) { _, isShown in
                 if isShown && !isScrolledToBottom {
                     // Post the notification to trigger the scroll
-                    NotificationCenter.default.post(name: .onScrollToBottom, object: nil)
+                    NotificationCenter.default.post(name: .onScrollToBottomWithoutAnimation, object: nil)
                 }
             }
             .sheet(isPresented: $inputViewModel.showGiphyPicker) {

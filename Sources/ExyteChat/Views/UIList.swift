@@ -9,6 +9,7 @@ import SwiftUI
 
 public extension Notification.Name {
     static let onScrollToBottom = Notification.Name("onScrollToBottom")
+    static let onScrollToBottomWithoutAnimation = Notification.Name("onScrollToBottomWithoutAnimation")
 }
 
 struct UIList<MessageContent: View, InputView: View>: UIViewRepresentable {
@@ -70,6 +71,16 @@ struct UIList<MessageContent: View, InputView: View>: UIViewRepresentable {
                 }
             }
         }
+        
+        // *** ADD THIS NEW OBSERVER ***
+                // Add an observer for non-animated scrolls (e.g., from keyboard)
+        NotificationCenter.default.addObserver(forName: .onScrollToBottomWithoutAnimation, object: nil, queue: .main) { _ in
+             // Using .main queue directly as UI updates must happen there.
+            if !context.coordinator.sections.isEmpty {
+                tableView.scrollToRow(at: IndexPath(row: 0, section: 0), at: .bottom, animated: false) // Non-Animated
+            }
+        }
+        // *** END OF ADDED OBSERVER ***
 
         DispatchQueue.main.async {
             shouldScrollToTop = {
