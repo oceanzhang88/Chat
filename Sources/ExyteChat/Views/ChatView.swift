@@ -207,6 +207,13 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                     inputViewModel.send()
                 }
             }
+            // ---> ADD THIS MODIFIER <---
+            .onChange(of: keyboardState.isShown) { _, isShown in
+                if isShown && !isScrolledToBottom {
+                    // Post the notification to trigger the scroll
+                    NotificationCenter.default.post(name: .onScrollToBottom, object: nil)
+                }
+            }
             .sheet(isPresented: $inputViewModel.showGiphyPicker) {
                 if giphyConfig.giphyKey != nil {
                     GiphyEditorView(
