@@ -146,6 +146,8 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
     @State private var giphyConfigured = false
     @State private var selectedMedia: GPHMedia? = nil
     
+    @State private var inputStyle: InputBarStyle = .default
+    
     public init(messages: [Message],
                 chatType: ChatType = .conversation,
                 replyMode: ReplyMode = .quote,
@@ -395,15 +397,26 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                     globalFocusState.focus = nil
                 }
             } else {
-                InputView(
-                    viewModel: inputViewModel,
-                    inputFieldId: viewModel.inputFieldId,
-                    style: .message,
-                    availableInputs: availableInputs,
-                    messageStyler: messageStyler,
-                    recorderSettings: recorderSettings,
-                    localization: localization
-                )
+                switch self.inputStyle {
+                    case .weChat:
+                        // If style is WeChat, instantiate WeChatInputView directly
+                        WeChatInputView(viewModel: inputViewModel)
+                            // Pass EnvironmentObjects needed by WeChatInputView
+                            .environmentObject(globalFocusState)
+                            .environmentObject(keyboardState) // Pass keyboard state if needed
+
+                    case .default:
+                        // If style is default, THEN check for a custom builder
+                        InputView(
+                            viewModel: inputViewModel,
+                            inputFieldId: viewModel.inputFieldId,
+                            style: .message,
+                            availableInputs: availableInputs,
+                            messageStyler: messageStyler,
+                            recorderSettings: recorderSettings,
+                            localization: localization
+                        )
+                } // End of switch
             }
         }
         .sizeGetter($inputViewSize)
@@ -724,3 +737,16 @@ public extension ChatView {
     }
 }
 
+// Add this extension at the end of ChatView.swift or in a new file
+public extension ChatView {
+    /// Sets the visual style and interaction model for the input bar.
+    /// - Parameter style: The desired style (`.default` or `.weChat`).
+    /// - Returns: A modified ChatView using the specified input style.
+    func inputViewStyle(_ style: InputBarStyle) -> ChatView {
+        var view = self
+        // Use _inputStyle.wrappedValue to set the state variable directly
+        // as simple assignment might not work correctly within the modifier function
+        view._inputStyle = State(initialValue: style)
+        return view
+    }
+}

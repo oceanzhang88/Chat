@@ -25,6 +25,7 @@ struct ChatExampleView: View {
         ChatView(messages: viewModel.messages, chatType: .conversation) { draft in
             viewModel.send(draft: draft)
         }
+        .inputViewStyle(.weChat)
         .enableLoadMore(pageSize: 3) { message in
             await MainActor.run {
                 viewModel.loadMoreMessage(before: message)
