@@ -76,8 +76,10 @@ struct UIList<MessageContent: View, InputView: View>: UIViewRepresentable {
                 // Add an observer for non-animated scrolls (e.g., from keyboard)
         NotificationCenter.default.addObserver(forName: .onScrollToBottomWithoutAnimation, object: nil, queue: .main) { _ in
              // Using .main queue directly as UI updates must happen there.
-            if !context.coordinator.sections.isEmpty {
-                tableView.scrollToRow(at: IndexPath(row: 0, section: 0), at: .bottom, animated: false) // Non-Animated
+            DispatchQueue.main.async {
+                if !context.coordinator.sections.isEmpty {
+                    tableView.scrollToRow(at: IndexPath(row: 0, section: 0), at: .bottom, animated: false)
+                }
             }
         }
         // *** END OF ADDED OBSERVER ***
