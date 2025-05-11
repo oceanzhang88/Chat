@@ -37,7 +37,7 @@ final actor MockChatInteractor {
 
     /// TODO: Generate error with random chance
     /// TODO: Save images from url to files. Imitate upload process
-    func send(draftMessage: ExyteChat.DraftMessage) {
+    func send(draftMessage: ExyteChat.DraftMessage) async {
         if draftMessage.id != nil {
             guard let index = messages.firstIndex(where: { $0.uid == draftMessage.id }) else {
                 // TODO: Create error
@@ -50,12 +50,10 @@ final actor MockChatInteractor {
         if Int.random(min: 0, max: 20) == 0 {
             status = .error(draftMessage)
         }
-        Task {
-            let message = await toMockMessage(draftMessage: draftMessage, user: chatData.tim, status: status)
-            //DispatchQueue.main.async { [message] in
-                self.messages.append(message)
-           // }
-        }
+        // Directly perform the async conversion and the mutation on the actor's properties
+        let message = await toMockMessage(draftMessage: draftMessage, user: chatData.tim, status: status)
+        self.messages.append(message) // This append is now part of the awaited flow
+
     }
 
     func remove(messageID: String) {
@@ -135,10 +133,10 @@ final actor MockChatInteractor {
     }
 
     func timerTick() {
-        updateSendingStatuses()
-        if isActive {
-            generateNewMessage()
-        }
+//        updateSendingStatuses()
+//        if isActive {
+//            generateNewMessage()
+//        }
     }
 
     func loadNextPage() async {

@@ -26,7 +26,7 @@ extension UIApplication {
     }
 }
 
-private extension UIEdgeInsets {
+extension UIEdgeInsets {
     var swiftUiInsets: EdgeInsets {
         EdgeInsets(top: top, leading: left, bottom: bottom, trailing: right)
     }

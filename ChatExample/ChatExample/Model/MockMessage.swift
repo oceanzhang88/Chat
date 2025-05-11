@@ -21,7 +21,7 @@ struct MockMessage: Sendable {
 
 extension MockMessage {
     func toChatMessage() -> ExyteChat.Message {
-        ExyteChat.Message(
+        let newMessage = ExyteChat.Message(
             id: uid,
             user: sender.toChatUser(),
             status: status,
@@ -32,5 +32,11 @@ extension MockMessage {
             recording: recording,
             replyMessage: replyMessage
         )
+        
+//        print("[ChatExampleViewModel.send] Constructed ExyteChat.Message. ID: \(newMessage.id), Recording present: \(newMessage.recording != nil)")
+//        if let rec = newMessage.recording {
+//             print("[ChatExampleViewModel.send] ExyteChat.Message recording details - Duration: \(rec.duration), Samples: \(rec.waveformSamples.count), URL: \(String(describing: rec.url))")
+//        }
+        return newMessage
     }
 }

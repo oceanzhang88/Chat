@@ -2,7 +2,7 @@
 //  ChatView.swift
 //  Chat
 //
-//  Created by Alisa Mylnikova on 20.04.2022.
+//  Created by Yangming Zhang on 5/10/25.
 //
 
 import SwiftUI
@@ -148,6 +148,10 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
     
     @State private var inputStyle: InputBarStyle = .default
     
+    // MARK: - Variables for Pushing Content Up with PreferenceKey
+    @State private var measuredVoiceOverlayBottomHeight: CGFloat = 0
+    @State private var voiceOverlayActive: Bool = false
+    
     public init(messages: [Message],
                 chatType: ChatType = .conversation,
                 replyMode: ReplyMode = .quote,
@@ -169,92 +173,118 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
     }
     
     public var body: some View {
-        mainView
-            .background(chatBackground())
-            .environmentObject(keyboardState)
         
-            .fullScreenCover(isPresented: $viewModel.fullscreenAttachmentPresented) {
-                let attachments = sections.flatMap { section in section.rows.flatMap { $0.message.attachments } }
-                let index = attachments.firstIndex { $0.id == viewModel.fullscreenAttachmentItem?.id }
-                
-                GeometryReader { g in
-                    FullscreenMediaPages(
-                        viewModel: FullscreenMediaPagesViewModel(
-                            attachments: attachments,
-                            index: index ?? 0
-                        ),
-                        safeAreaInsets: g.safeAreaInsets,
-                        onClose: { [weak viewModel] in
-                            viewModel?.dismissAttachmentFullScreen()
-                        }
-                    )
-                    .ignoresSafeArea()
-                }
-            }
-            .onAppear() {
-                if isGiphyAvailable() {
-                    if let giphyKey = giphyConfig.giphyKey {
-                        if !giphyConfigured {
-                            giphyConfigured = true
-                            Giphy.configure(apiKey: giphyKey)
-                        }
-                    } else {
-                        print("WARNING: giphy key not provided, please pass a key using giphyConfig")
+        ZStack { // Root ZStack for layering
+            mainView
+                .background(chatBackground())
+                .environmentObject(keyboardState)
+            
+                .fullScreenCover(isPresented: $viewModel.fullscreenAttachmentPresented) {
+                    let attachments = sections.flatMap { section in section.rows.flatMap { $0.message.attachments } }
+                    let index = attachments.firstIndex { $0.id == viewModel.fullscreenAttachmentItem?.id }
+                    
+                    GeometryReader { g in
+                        FullscreenMediaPages(
+                            viewModel: FullscreenMediaPagesViewModel(
+                                attachments: attachments,
+                                index: index ?? 0
+                            ),
+                            safeAreaInsets: g.safeAreaInsets,
+                            onClose: { [weak viewModel] in
+                                viewModel?.dismissAttachmentFullScreen()
+                            }
+                        )
+                        .ignoresSafeArea()
                     }
                 }
-            }
-            .onChange(of: selectedMedia) {
-                if let giphyMedia = selectedMedia {
-                    inputViewModel.attachments.giphyMedia = giphyMedia
-                    inputViewModel.send()
+                .onAppear() {
+                    if isGiphyAvailable() {
+                        if let giphyKey = giphyConfig.giphyKey {
+                            if !giphyConfigured {
+                                giphyConfigured = true
+                                Giphy.configure(apiKey: giphyKey)
+                            }
+                        } else {
+                            print("WARNING: giphy key not provided, please pass a key using giphyConfig")
+                        }
+                    }
                 }
-            }
-            // ---> ADD THIS MODIFIER <---
-            .onChange(of: keyboardState.isShown) { _, isShown in
-                if isShown && !isScrolledToBottom {
-                    // Post the notification to trigger the scroll
-                    NotificationCenter.default.post(name: .onScrollToBottomWithoutAnimation, object: nil)
+                .onChange(of: selectedMedia) {
+                    if let giphyMedia = selectedMedia {
+                        inputViewModel.attachments.giphyMedia = giphyMedia
+                        inputViewModel.send()
+                    }
                 }
-            }
-            .sheet(isPresented: $inputViewModel.showGiphyPicker) {
-                if giphyConfig.giphyKey != nil {
-                    GiphyEditorView(
-                        giphyConfig: giphyConfig,
-                        selectedMedia: $selectedMedia
+                // ---> ADD THIS MODIFIER <---
+                .onChange(of: keyboardState.isShown) { _, isShown in
+                    if isShown && !isScrolledToBottom {
+                        // Post the notification to trigger the scroll
+                        NotificationCenter.default.post(name: .onScrollToBottomWithoutAnimation, object: nil)
+                    }
+                }
+                .sheet(isPresented: $inputViewModel.showGiphyPicker) {
+                    if giphyConfig.giphyKey != nil {
+                        GiphyEditorView(
+                            giphyConfig: giphyConfig,
+                            selectedMedia: $selectedMedia
+                        )
+                        .environmentObject(globalFocusState)
+                    } else {
+                        Text("no giphy key found")
+                    }
+                }
+                .fullScreenCover(isPresented: $inputViewModel.showPicker) {
+                    AttachmentsEditor(
+                        inputViewModel: inputViewModel,
+                        inputViewBuilder: inputViewBuilder,
+                        chatTitle: chatTitle,
+                        messageStyler: messageStyler,
+                        orientationHandler: orientationHandler,
+                        mediaPickerSelectionParameters: mediaPickerSelectionParameters,
+                        availableInputs: availableInputs,
+                        localization: localization
                     )
                     .environmentObject(globalFocusState)
-                } else {
-                    Text("no giphy key found")
                 }
-            }
-            .fullScreenCover(isPresented: $inputViewModel.showPicker) {
-                AttachmentsEditor(
-                    inputViewModel: inputViewModel,
-                    inputViewBuilder: inputViewBuilder,
-                    chatTitle: chatTitle,
-                    messageStyler: messageStyler,
-                    orientationHandler: orientationHandler,
-                    mediaPickerSelectionParameters: mediaPickerSelectionParameters,
-                    availableInputs: availableInputs,
-                    localization: localization
-                )
-                .environmentObject(globalFocusState)
-            }
+            
+                .onChange(of: inputViewModel.showPicker) { _ , newValue in
+                    if newValue {
+                        globalFocusState.focus = nil
+                    }
+                }
+                .onChange(of: inputViewModel.showGiphyPicker) { _ , newValue in
+                    if newValue {
+                        globalFocusState.focus = nil
+                    }
+                }
+            
+            // Conditionally present the WeChatRecordingOverlayView
+            // And listen for its bottom area height preference
+            .overlay(
+                Group {
+                    if inputViewModel.isRecordingAudioForOverlay && inputStyle == .weChat {
+                        WeChatRecordingOverlayView(
+//                            viewModel: inputViewModel,
+//                            localization: localization,
+//                            isDraggingOverCancelZone: $inputViewModel.isDraggingInCancelZoneForOverlay,
+//                            inputBarHeight: inputViewSize.height // <-- PASS THE HEIGHT
+                        )
+//                        .edgesIgnoringSafeArea(.all)
+//                        .zIndex(10)
+//                        .transition(.opacity.animation(.easeInOut(duration: 0.20)))
+//                        .onPreferenceChange(VoiceOverlayBottomAreaHeightPreferenceKey.self) { height in
+//                             print("[ChatView] Received voice overlay bottom height: \(height)")
+//                             self.measuredVoiceOverlayBottomHeight = height
+//                        }
+                    }
+                }
+            )
+        }
         
-            .onChange(of: inputViewModel.showPicker) { _ , newValue in
-                if newValue {
-                    globalFocusState.focus = nil
-                }
-            }
-            .onChange(of: inputViewModel.showGiphyPicker) { _ , newValue in
-                if newValue {
-                    globalFocusState.focus = nil
-                }
-            }
     }
     
     var mainView: some View {
-        VStack {
+        VStack { // Set spacing to 0 for the main VStack
             if showNetworkConnectionProblem, !networkMonitor.isConnected {
                 waitingForNetwork
             }
@@ -388,6 +418,13 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                 }
             }
         }
+        // Apply conditional bottom padding using the measured height
+        .padding(.bottom, voiceOverlayActive ? measuredVoiceOverlayBottomHeight : 0)
+        .animation(.easeInOut(duration: 0.20), value: voiceOverlayActive)
+        .animation(.easeInOut(duration: 0.20), value: measuredVoiceOverlayBottomHeight) // Animate if height itself changes
+        .onChange(of: inputViewModel.isRecordingAudioForOverlay) { _, newValue in
+            self.voiceOverlayActive = newValue
+        }
     }
 
     var inputView: some View {
@@ -400,11 +437,11 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                 switch self.inputStyle {
                     case .weChat:
                         // If style is WeChat, instantiate WeChatInputView directly
-                        WeChatInputView(viewModel: inputViewModel)
-                            // Pass EnvironmentObjects needed by WeChatInputView
-                            .environmentObject(globalFocusState)
-                            .environmentObject(keyboardState) // Pass keyboard state if needed
-
+                        WeChatInputView(
+                            viewModel: inputViewModel,
+                            localization: localization,
+                            inputFieldId: viewModel.inputFieldId
+                        )
                     case .default:
                         // If style is default, THEN check for a custom builder
                         InputView(
@@ -538,13 +575,17 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
     
     private static func createLocalization() -> ChatLocalization {
         return ChatLocalization(
-            inputPlaceholder: String(localized: "Type a message..."),
-            signatureText: String(localized: "Add signature..."),
-            cancelButtonText: String(localized: "Cancel"),
-            recentToggleText: String(localized: "Recents"),
-            waitingForNetwork: String(localized: "Waiting for network"),
-            recordingText: String(localized: "Recording..."),
-            replyToText: String(localized: "Reply to")
+            inputPlaceholder: String(localized: "Type a message...", bundle: .module),
+            signatureText: String(localized: "Add signature...", bundle: .module),
+            cancelButtonText: String(localized: "Cancel", bundle: .module),
+            recentToggleText: String(localized: "Recents", bundle: .module),
+            waitingForNetwork: String(localized: "Waiting for network", bundle: .module),
+            recordingText: String(localized: "Recording...", bundle: .module),
+            replyToText: String(localized: "Reply to", bundle: .module),
+            holdToTalkText: String(localized: "Hold to Talk", bundle: .module),
+            releaseToSendText: String(localized: "Release to send", bundle: .module),
+            releaseToCancelText: String(localized: "Release to cancel", bundle: .module),
+            convertToTextButton: String(localized: "To Text", bundle: .module) // <<<< ADDED THIS LINE
         )
     }
 }

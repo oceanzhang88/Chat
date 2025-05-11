@@ -30,8 +30,22 @@ final class ChatExampleViewModel: ObservableObject, ReactionDelegate {
 
     func send(draft: DraftMessage) {
         Task {
+            // This now waits until the interactor has finished appending the message
             await interactor.send(draftMessage: draft)
-            self.updateMessages()
+            
+            // Fetch the updated messages list from the interactor
+            let updatedMessagesFromInteractor = await interactor.messages
+            // Update the local @Published messages array
+            self.messages = updatedMessagesFromInteractor.compactMap { $0.toChatMessage() }
+            
+            // Now, log the state of the just-updated self.messages
+            print("[ChatExampleViewModel] Messages count after send: \(self.messages.count)")
+            if let lastMessage = self.messages.last {
+                print("[ChatExampleViewModel] Last message recording: \(String(describing: lastMessage.recording))")
+                if let rec = lastMessage.recording {
+                    print("[ChatExampleViewModel] Last message recording details - Duration: \(rec.duration), Samples: \(rec.waveformSamples.count), URL: \(String(describing: rec.url))")
+                }
+            }
         }
     }
     
