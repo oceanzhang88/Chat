@@ -12,6 +12,8 @@ final actor Recorder {
     private var currentRecordingURL: URL?
     private var currentWaveformSamples: [CGFloat] = []
     private var currentDuration: TimeInterval = 0
+    private let maxWaveformSamples = 100 // Define the maximum number of samples
+
 
     private var recorderSettings = RecorderSettings()
 
@@ -173,6 +175,10 @@ final actor Recorder {
         } else {
             currentWaveformSamples.append(0.02)
         }
+        // Cap the number of samples
+        if currentWaveformSamples.count > maxWaveformSamples {
+            currentWaveformSamples.removeFirst(currentWaveformSamples.count - maxWaveformSamples)
+        }
         Logger.log("onTimerTick: Calling durationProgressHandler with duration \(currentDuration), samples count \(currentWaveformSamples.count)")
         durationProgressHandler(currentDuration, currentWaveformSamples)
     }
@@ -193,6 +199,10 @@ final actor Recorder {
                     finalSamples.append(CGFloat(normalizedPower))
                 } else {
                     finalSamples.append(0.02)
+                }
+               
+                if finalSamples.count > maxWaveformSamples {
+                    finalSamples.removeFirst(finalSamples.count - maxWaveformSamples)
                 }
                 recorder.stop()
                 Logger.log("Recording hardware stopped. Duration at stop: \(finalDuration). Samples collected: \(finalSamples.count)")

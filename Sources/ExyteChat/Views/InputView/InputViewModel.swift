@@ -18,11 +18,11 @@ final class InputViewModel: ObservableObject {
             }
         }
     }
-    @Published var isDraggingInCancelZoneForOverlay: Bool = false {
+    @Published var isDraggingInCancelZoneOverlay: Bool = false {
         didSet {
             // Corrected the typo here: isDraggingAudioForOverlay -> isDraggingInCancelZoneForOverlay
-            if oldValue != isDraggingInCancelZoneForOverlay {
-                Logger.log("isDraggingInCancelZoneForOverlay changed from \(oldValue) to \(isDraggingInCancelZoneForOverlay)")
+            if oldValue != isDraggingInCancelZoneOverlay {
+                Logger.log("isDraggingInCancelZoneForOverlay changed from \(oldValue) to \(isDraggingInCancelZoneOverlay)")
             }
         }
     }
@@ -76,8 +76,8 @@ final class InputViewModel: ObservableObject {
         if isRecordingAudioForOverlay {
             isRecordingAudioForOverlay = false
         }
-        if isDraggingInCancelZoneForOverlay {
-            isDraggingInCancelZoneForOverlay = false
+        if isDraggingInCancelZoneOverlay {
+            isDraggingInCancelZoneOverlay = false
         }
     }
     
@@ -93,21 +93,10 @@ final class InputViewModel: ObservableObject {
             self.attachments = InputViewAttachments()
             self.subscribeValidation()
             self.state = .empty
-            self.isDraggingInCancelZoneForOverlay = false
+            self.isDraggingInCancelZoneOverlay = false
             Logger.log("State after reset: \(self.state)")
         }
     }
-    
-    // This function should be okay from the previous iteration,
-        // assuming Recorder.stopRecording() now returns more reliable data.
-//    func send() {
-//        Logger.log(" send() called. Current state: \(state)")
-//        Task {
-//            await recorder.stopRecording()
-//            await recordingPlayer?.reset()
-//            sendMessage()
-//        }
-//    }
     
     func send() {
         Logger.log("send() called. Current state: \(state)")
@@ -212,14 +201,6 @@ final class InputViewModel: ObservableObject {
                 }
             }
         case .stopRecordAudio:
-//            Task {
-//                Logger.log(" Action .stopRecordAudio.")
-//               await recorder.stopRecording()
-//               if let _ = attachments.recording {
-//                   state = .hasRecording
-//               }
-//               await recordingPlayer?.reset()
-//            }
             Task {
                 Logger.log("Action .stopRecordAudio.")
                 await recorder.stopRecording()
@@ -238,8 +219,8 @@ final class InputViewModel: ObservableObject {
                 await recorder.stopRecording()
                 attachments.recording = nil
                 state = .empty
-                if isDraggingInCancelZoneForOverlay { // Only reset if it was true
-                    isDraggingInCancelZoneForOverlay = false
+                if isDraggingInCancelZoneOverlay { // Only reset if it was true
+                    isDraggingInCancelZoneOverlay = false
                 }
             }
         case .playRecord:
@@ -280,10 +261,10 @@ final class InputViewModel: ObservableObject {
         }
 
         let url = await recorder.startRecording { duration, samples in
-//            DispatchQueue.main.async { [weak self] in
-//                self?.attachments.recording?.duration = duration
-//                self?.attachments.recording?.waveformSamples = samples
-//            }
+            DispatchQueue.main.async { [weak self] in
+                self?.attachments.recording?.duration = duration
+                self?.attachments.recording?.waveformSamples = samples
+            }
         }
 
         await MainActor.run {
@@ -301,25 +282,6 @@ final class InputViewModel: ObservableObject {
             }
         }
     }
-
-//    private func recordAudio() {
-//        Task {
-//            if await recorder.isRecording { return }
-//        }
-//        Task { @MainActor [recorder] in
-//            attachments.recording = Recording()
-//        let url = await recorder.startRecording { duration, samples in
-//            DispatchQueue.main.async { [weak self] in
-//                self?.attachments.recording?.duration = duration
-//                self?.attachments.recording?.waveformSamples = samples
-//            }
-//        }
-//            if state == .waitingForRecordingPermission {
-//                state = .isRecordingTap
-//                }
-//            attachments.recording?.url = url
-//        }
-//    }
 }
 
 private extension InputViewModel {

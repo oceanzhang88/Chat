@@ -16,7 +16,6 @@ struct WeChatInputView: View {
     @GestureState private var isLongPressSustained: Bool = false // True while long press is active
     @State private var showRecordingOverlay: Bool = false
     // @State private var dragLocation: CGPoint = .zero // Not strictly needed for this logic
-    @State private var isDraggingOverCancelZone: Bool = false
 
     private let cancelDragThresholdY: CGFloat = -80
 
@@ -30,7 +29,7 @@ struct WeChatInputView: View {
     // Computed properties for localized text
     private var holdToTalkTextComputed: String {
         if isLongPressSustained && (viewModel.state == .isRecordingHold || viewModel.state == .isRecordingTap) {
-             return isDraggingOverCancelZone ? localization.releaseToCancelText : localization.releaseToSendText
+             return viewModel.isDraggingInCancelZoneOverlay ? localization.releaseToCancelText : localization.releaseToSendText
         }
         return localization.holdToTalkText
     }
@@ -141,31 +140,27 @@ struct WeChatInputView: View {
                 gestureState = value.first ?? false
             }
             .onChanged { value in // This .onChanged is for the SimultaneousGesture
-                // value.first is Bool? (LongPressGesture state)
-                // value.second is DragGesture.Value? (DragGesture current state)
-                
-                // Ensure long press is active before processing drag for cancellation
                 guard value.first == true, let dragInfo = value.second else {
+                    // If long press ended or no drag info, ensure the view model state is reset if it was true
+                    if viewModel.isDraggingInCancelZoneOverlay {
+                        viewModel.isDraggingInCancelZoneOverlay = false
+                        Logger.log("WeChatInputView.onChanged: Long press ended or no drag, resetting isDraggingInCancelZoneForOverlay to false")
+                    }
                     return
                 }
 
-                if dragInfo.translation.height < cancelDragThresholdY {
-                    if !isDraggingOverCancelZone {
-                        isDraggingOverCancelZone = true
-                        Logger.log("Dragging into cancel zone")
-                    }
-                } else {
-                    if isDraggingOverCancelZone {
-                        isDraggingOverCancelZone = false
-                        Logger.log("Dragging out of cancel zone")
-                    }
+                let currentlyInCancelZone = dragInfo.translation.height < cancelDragThresholdY
+                if viewModel.isDraggingInCancelZoneOverlay != currentlyInCancelZone {
+                    viewModel.isDraggingInCancelZoneOverlay = currentlyInCancelZone
+                    // Logger already in InputViewModel's didSet for this property
                 }
             }
             .onEnded { value in // This .onEnded is for the SimultaneousGesture
                 let longPressWasSustained = value.first ?? false
-
+                let wasInCancelZone = viewModel.isDraggingInCancelZoneOverlay // Check VM's state
+                
                 if longPressWasSustained {
-                    if isDraggingOverCancelZone {
+                    if wasInCancelZone {
                         Logger.log("CombinedGesture.onEnded: Cancel action (dragged to cancel).")
                         performInputAction(.deleteRecord)
                     } else {
@@ -196,7 +191,10 @@ struct WeChatInputView: View {
                         performInputAction(.deleteRecord)
                     }
                 }
-                isDraggingOverCancelZone = false // Reset for the next gesture
+                // Always reset the dragging cancel zone state in the ViewModel when gesture ends
+                if viewModel.isDraggingInCancelZoneOverlay {
+                    viewModel.isDraggingInCancelZoneOverlay = false
+                }
             }
 
         Text(holdToTalkTextComputed)
@@ -220,10 +218,6 @@ struct WeChatInputView: View {
                 } else {
                     // isLongPressSustained became false. This means the gesture ended or was cancelled.
                     // The .onEnded block of `combinedGesture` handles the send/delete logic.
-                    // Resetting drag zone here as well for safety, though .onEnded should cover it.
-                    if isDraggingOverCancelZone {
-                        isDraggingOverCancelZone = false
-                    }
                     Logger.log("onChange(isLongPressSustained) became false. Current viewModel state: \(viewModel.state)")
                 }
             }

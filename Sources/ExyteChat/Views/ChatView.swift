@@ -178,7 +178,18 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
             mainView
                 .background(chatBackground())
                 .environmentObject(keyboardState)
-            
+                .onAppear() {
+                    if isGiphyAvailable() {
+                        if let giphyKey = giphyConfig.giphyKey {
+                            if !giphyConfigured {
+                                giphyConfigured = true
+                                Giphy.configure(apiKey: giphyKey)
+                            }
+                        } else {
+                            print("WARNING: giphy key not provided, please pass a key using giphyConfig")
+                        }
+                    }
+                }
                 .fullScreenCover(isPresented: $viewModel.fullscreenAttachmentPresented) {
                     let attachments = sections.flatMap { section in section.rows.flatMap { $0.message.attachments } }
                     let index = attachments.firstIndex { $0.id == viewModel.fullscreenAttachmentItem?.id }
@@ -195,31 +206,6 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                             }
                         )
                         .ignoresSafeArea()
-                    }
-                }
-                .onAppear() {
-                    if isGiphyAvailable() {
-                        if let giphyKey = giphyConfig.giphyKey {
-                            if !giphyConfigured {
-                                giphyConfigured = true
-                                Giphy.configure(apiKey: giphyKey)
-                            }
-                        } else {
-                            print("WARNING: giphy key not provided, please pass a key using giphyConfig")
-                        }
-                    }
-                }
-                .onChange(of: selectedMedia) {
-                    if let giphyMedia = selectedMedia {
-                        inputViewModel.attachments.giphyMedia = giphyMedia
-                        inputViewModel.send()
-                    }
-                }
-                // ---> ADD THIS MODIFIER <---
-                .onChange(of: keyboardState.isShown) { _, isShown in
-                    if isShown && !isScrolledToBottom {
-                        // Post the notification to trigger the scroll
-                        NotificationCenter.default.post(name: .onScrollToBottomWithoutAnimation, object: nil)
                     }
                 }
                 .sheet(isPresented: $inputViewModel.showGiphyPicker) {
@@ -246,7 +232,19 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                     )
                     .environmentObject(globalFocusState)
                 }
-            
+                .onChange(of: selectedMedia) {
+                    if let giphyMedia = selectedMedia {
+                        inputViewModel.attachments.giphyMedia = giphyMedia
+                        inputViewModel.send()
+                    }
+                }
+                // ---> ADD THIS MODIFIER <---
+                .onChange(of: keyboardState.isShown) { _, isShown in
+                    if isShown && !isScrolledToBottom {
+                        // Post the notification to trigger the scroll
+                        NotificationCenter.default.post(name: .onScrollToBottomWithoutAnimation, object: nil)
+                    }
+                }
                 .onChange(of: inputViewModel.showPicker) { _ , newValue in
                     if newValue {
                         globalFocusState.focus = nil
@@ -258,27 +256,21 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                     }
                 }
             
-            // Conditionally present the WeChatRecordingOverlayView
-            // And listen for its bottom area height preference
-            .overlay(
-                Group {
-                    if inputViewModel.isRecordingAudioForOverlay && inputStyle == .weChat {
-                        WeChatRecordingOverlayView(
-//                            viewModel: inputViewModel,
-//                            localization: localization,
-//                            isDraggingOverCancelZone: $inputViewModel.isDraggingInCancelZoneForOverlay,
-//                            inputBarHeight: inputViewSize.height // <-- PASS THE HEIGHT
-                        )
-//                        .edgesIgnoringSafeArea(.all)
-//                        .zIndex(10)
-//                        .transition(.opacity.animation(.easeInOut(duration: 0.20)))
-//                        .onPreferenceChange(VoiceOverlayBottomAreaHeightPreferenceKey.self) { height in
-//                             print("[ChatView] Received voice overlay bottom height: \(height)")
-//                             self.measuredVoiceOverlayBottomHeight = height
-//                        }
-                    }
-                }
+            WeChatRecordingOverlayView(
+                inputViewModel: inputViewModel,
+                inputBarHeight: inputViewSize.height, // <-- PASS THE HEIGHT
+                localization: localization
             )
+            .zIndex(10)
+            .onPreferenceChange(VoiceOverlayBottomAreaHeightPreferenceKey.self) { height in
+                 // Ensure this update happens on the main thread if it might be triggered from a background one
+                 DispatchQueue.main.async {
+                    if self.measuredVoiceOverlayBottomHeight != height {
+                        Logger.log("Received voice overlay bottom height: \(height)")
+                        self.measuredVoiceOverlayBottomHeight = height
+                    }
+                 }
+            }
         }
         
     }
@@ -420,8 +412,8 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
         }
         // Apply conditional bottom padding using the measured height
         .padding(.bottom, voiceOverlayActive ? measuredVoiceOverlayBottomHeight : 0)
-        .animation(.easeInOut(duration: 0.20), value: voiceOverlayActive)
-        .animation(.easeInOut(duration: 0.20), value: measuredVoiceOverlayBottomHeight) // Animate if height itself changes
+        .animation(.easeInOut(duration: 0.3), value: voiceOverlayActive)
+//        .animation(.easeInOut(duration: 0.25), value: measuredVoiceOverlayBottomHeight) // Animate if height itself changes
         .onChange(of: inputViewModel.isRecordingAudioForOverlay) { _, newValue in
             self.voiceOverlayActive = newValue
         }
