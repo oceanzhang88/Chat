@@ -29,6 +29,9 @@ Example.xcworkspace
 # Icon must end with two \r
 Icon
 
+# Swift Package
+Package.resolved
+
 # Thumbnails
 ._*
 
