@@ -136,11 +136,11 @@ struct BottomControlsView: View {
     }
 
     private func arcBackgroundColor() -> LinearGradient {
-        let isCancelOrError = currentPhase == .draggingToCancel
+        let notInArc = currentPhase == .draggingToCancel || currentPhase == .draggingToConvertToText
 
-        let topColor = isCancelOrError ? Color(red: 80/255, green: 80/255, blue: 80/255) : Color.white.opacity(0.8)
-        let midColor = isCancelOrError ? Color(red: 70/255, green: 70/255, blue: 70/255) : Color.white.opacity(0.75)
-        let bottomColor = isCancelOrError ? Color(red: 60/255, green: 60/255, blue: 60/255) : Color.white.opacity(0.7)
+        let topColor = notInArc ? Color(red: 80/255, green: 80/255, blue: 80/255) : Color.white.opacity(0.8)
+        let midColor = notInArc ? Color(red: 70/255, green: 70/255, blue: 70/255) : Color.white.opacity(0.75)
+        let bottomColor = notInArc ? Color(red: 60/255, green: 60/255, blue: 60/255) : Color.white.opacity(0.7)
 
         return LinearGradient(
             gradient: Gradient(stops: [
