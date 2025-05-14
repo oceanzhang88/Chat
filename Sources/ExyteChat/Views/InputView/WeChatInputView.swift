@@ -9,10 +9,6 @@ struct WeChatInputView: View {
     let localization: ChatLocalization
     let inputFieldId: UUID
 
-    // Pass these from ChatView where they are managed by PreferenceKeys
-    var cancelRectGlobal: CGRect
-    var convertToTextRectGlobal: CGRect
-
     @State private var isVoiceMode: Bool = false
     @FocusState private var isTextFocused: Bool
 

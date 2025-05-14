@@ -182,7 +182,7 @@ final actor RecordingPlayer: ObservableObject {
         itemStatusObserver = playerItem.observe(\.status, options: [.new, .initial]) { [weak self] item, change in
             Task {
                 guard let strongSelf = await self else { return }
-                Logger.log("KVO: PlayerItem status changed to \(item.status.rawValue) for \(item.asset is AVURLAsset ? (item.asset as! AVURLAsset).url.lastPathComponent : "unknown asset"). playWhenReady: \(strongSelf.playWhenReady)")
+                Logger.log("KVO: PlayerItem status changed to \(item.status.rawValue) for \(item.asset is AVURLAsset ? (item.asset as! AVURLAsset).url.lastPathComponent : "unknown asset"). playWhenReady: \(await await strongSelf.playWhenReady)")
                 
                 switch item.status {
                 case .readyToPlay:
@@ -194,7 +194,7 @@ final actor RecordingPlayer: ObservableObject {
                            strongSelf.secondsLeft = itemDurationSeconds
                         }
                     }
-                    if strongSelf.playWhenReady {
+                    if await strongSelf.playWhenReady {
                         Logger.log("KVO: playWhenReady is true, calling play().")
                         await strongSelf.play()
                     }
@@ -231,7 +231,7 @@ final actor RecordingPlayer: ObservableObject {
             queue: nil
         ) { [weak self] time in
             Task {
-                guard let strongSelf = await self, let currentItem = strongSelf.player?.currentItem else { return }
+                guard let strongSelf = await self, let currentItem = await strongSelf.player?.currentItem else { return }
                 let itemDuration = currentItem.duration
                 if !itemDuration.seconds.isNaN && itemDuration.seconds > 0 {
                     await strongSelf.updateProgressProperties(itemDuration: itemDuration, currentTime: time)

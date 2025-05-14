@@ -8,9 +8,12 @@
 import SwiftUI
 
 struct BottomControlsView: View {
+    @Environment(\.chatTheme) private var theme
+    
     var currentPhase: WeChatRecordingPhase // Use this
     var localization: ChatLocalization
     var inputViewModel: InputViewModel
+    let inputBarHeight: CGFloat
     
     var onCancel: () -> Void // For X button during recording/dragging
     var onConvertToText: () -> Void // For En button (direct tap, if any)
@@ -18,15 +21,15 @@ struct BottomControlsView: View {
     var onSendVoiceAfterASR: () -> Void
     var onCancelASR: () -> Void
 
-    let inputBarHeight: CGFloat
-    @Environment(\.chatTheme) private var theme
-
     private let controlsContentHeight: CGFloat = 130
     private let helperTextMinHeight: CGFloat = 20
     private var arcAreaHeight: CGFloat { inputBarHeight * 1.8 } // Adjusted for better proportion
     private var arcSagitta: CGFloat { arcAreaHeight * 0.33 }
     private var maxButtonContainerWidth: CGFloat { OverlayButton.highlightedCircleSize + 10 }
-    private var maxButtonContainerHeight: CGFloat { OverlayButton.highlightedCircleSize + OverlayButton.labelFontSize + 20 }
+    private var maxButtonContainerHeight: CGFloat {
+        OverlayButton.highlightedCircleSize + OverlayButton.labelFontSize + 20
+    }
+    private var chatPushUpHeight: CGFloat { controlsContentHeight }
 
 
     var body: some View {
@@ -53,17 +56,18 @@ struct BottomControlsView: View {
                             isHighlighted: currentPhase == .draggingToCancel,
                             action: onCancel
                         )
+                        .frame(width: maxButtonContainerWidth, height: maxButtonContainerHeight)
                         .background(GeometryReader { geo in
                             let frameInGlobal = geo.frame(in: .global)
-                            Logger.log("BottomControlsView (Cancel Button): GeometryReader frame(in: .global) = \(frameInGlobal)")
-                            DispatchQueue.main.async {
-                                    if inputViewModel.cancelRectGlobal != frameInGlobal {
-                                        inputViewModel.cancelRectGlobal = frameInGlobal
-                                    }
-                               }
-                            return Color.clear
+                            if inputViewModel.cancelRectGlobal != frameInGlobal {
+                                Logger.log("BottomControlsView (Cancel Button): GeometryReader frame(in: .global) = \(frameInGlobal)")
+                                DispatchQueue.main.async {
+                                    inputViewModel.cancelRectGlobal = frameInGlobal
+                                }
+                            }
+                            return Color.yellow.preference(key: CancelRectPreferenceKey.self, value: frameInGlobal)
                         })
-                        .frame(width: maxButtonContainerWidth, height: maxButtonContainerHeight)
+                        
 
                         Spacer()
 
@@ -73,17 +77,17 @@ struct BottomControlsView: View {
                             isHighlighted: currentPhase == .draggingToConvertToText,
                             action: onConvertToText // Direct tap action might be less relevant if drag-release is primary
                         )
+                        .frame(width: maxButtonContainerWidth, height: maxButtonContainerHeight)
                         .background(GeometryReader { geo in
                             let frameInGlobal = geo.frame(in: .global)
-                            Logger.log("BottomControlsView (To Text Button): GeometryReader frame(in: .global) = \(frameInGlobal)")
-                            DispatchQueue.main.async {
-                                    if inputViewModel.convertToTextRectGlobal != frameInGlobal {
-                                        inputViewModel.convertToTextRectGlobal = frameInGlobal
-                                    }
-                               }
-                            return Color.clear
+                            if inputViewModel.convertToTextRectGlobal != frameInGlobal {
+                                Logger.log("BottomControlsView (To Text Button): GeometryReader frame(in: .global) = \(frameInGlobal)")
+                                DispatchQueue.main.async {
+                                    inputViewModel.convertToTextRectGlobal = frameInGlobal
+                                }
+                            }
+                            return Color.yellow.preference(key: ConvertToTextRectPreferenceKey.self, value: frameInGlobal)
                         })
-                        .frame(width: maxButtonContainerWidth, height: maxButtonContainerHeight)
                     }
                 }
                 .padding(.horizontal, 60)
@@ -110,20 +114,15 @@ struct BottomControlsView: View {
             .frame(height: arcAreaHeight)
         }
         .background(GeometryReader { geometry in
-            Color.clear.preference(key: VoiceOverlayBottomAreaHeightPreferenceKey.self, value: arcAreaHeight)
+            Color.clear.preference(key: VoiceOverlayBottomAreaHeightPreferenceKey.self, value: chatPushUpHeight)
         })
     }
 
     private func helperTextForPhase() -> String {
         switch currentPhase {
-        case .idle: return ""
         case .recording: return localization.releaseToSendText
-        case .draggingToCancel: return localization.releaseToCancelText
-        case .draggingToConvertToText: return "Release for Speech-to-Text" // Needs localization
-        case .processingASR: return "Converting..." // Needs localization
-        case .asrCompleteWithText(let text):
-//            if inputViewModel.sttErrorMessage != nil { return inputViewModel.sttErrorMessage ?? "Error" }
-            return text.isEmpty ? "Couldn't hear clearly. Try again?" : "Tap bubble to edit, or choose an action" // Needs localization
+        case .idle, .draggingToCancel, .draggingToConvertToText,
+                .processingASR, .asrCompleteWithText: return ""
         }
     }
 

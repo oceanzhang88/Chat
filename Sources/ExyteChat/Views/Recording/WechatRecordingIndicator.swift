@@ -21,7 +21,7 @@ struct WechatRecordingIndicator: View {
     private let cornerRadius: CGFloat = 22
     private let tipHeight: CGFloat = 10
     private let tipWidth: CGFloat = 20
-    private let defaultWaveBarColor: Color = Color(red: 80/255, green: 80/255, blue: 80/255) // Default dark gray for waves
+    private let defaultWaveBarColor: Color = Color(red: 100/255, green: 100/255, blue: 100/255) // Default dark gray for waves
 
     private var currentIndicatorColor: Color {
         switch currentPhase {
@@ -49,15 +49,6 @@ struct WechatRecordingIndicator: View {
         currentIndicatorColor.opacity(0.4)
     }
 
-    private var currentWaveformBarColor: Color {
-        switch currentPhase {
-        case .draggingToCancel, .draggingToConvertToText:
-            return Color.white.opacity(0.75) // White waves on special backgrounds
-        default:
-            return defaultWaveBarColor.opacity(0.85) // Darker waves on greenish background
-        }
-    }
-
     // Determine number of bars based on phase for shrinking effect
     private var numberOfWaveformBars: Int {
         switch currentPhase {
@@ -80,13 +71,13 @@ struct WechatRecordingIndicator: View {
                 let barsToShow = min(numberOfWaveformBars, waveformData.count)
                 ForEach(0..<barsToShow, id: \.self) { index in
                     Capsule()
-                        .fill(currentWaveformBarColor)
+                        .fill(defaultWaveBarColor)
                         .frame(width: barWidth, height: maxBarHeight * waveformData[index])
                 }
             }
             .padding(.bottom, tipHeight * 0.8)
             .padding(.horizontal, currentPhase == .draggingToCancel || currentPhase == .draggingToConvertToText ? 10 : 20) // Less padding when shrunk
-            .animation(.easeInOut(duration: 0.1), value: currentWaveformBarColor) // Quick color change for bars
+            .animation(.easeInOut(duration: 0.1), value: defaultWaveBarColor) // Quick color change for bars
         }
         // Animations for color and shadow are handled by the parent view's animation on currentIndicatorWidth/Offset
         .animation(.linear(duration: 0.07), value: waveformData) // Keep waveform data updates snappy

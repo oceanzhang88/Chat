@@ -22,8 +22,10 @@ struct OverlayButton: View {
     static let labelFontSize: CGFloat = 13
     
     private var currentCircleSize: CGFloat { isHighlighted ? OverlayButton.highlightedCircleSize : OverlayButton.normalCircleSize }
-    private var iconFontSize: CGFloat { isHighlighted ? 24 : 22 }
-    private let staticTextIconFontSize: CGFloat = 24
+    private var scaleFactor: CGFloat { isHighlighted ?
+        (OverlayButton.highlightedCircleSize / OverlayButton.normalCircleSize) : 1.0 }
+    private let staticIconFontSize: CGFloat = 22
+    private let staticTextIconFontSize: CGFloat = 22
     
     var body: some View {
         Button(action: action) {
@@ -35,16 +37,17 @@ struct OverlayButton: View {
                 ZStack {
                     Circle()
                         .fill(isHighlighted ? Color.white : Color(UIColor.darkGray).opacity(0.8))
-                        .frame(width: currentCircleSize, height: currentCircleSize)
-
+                        .frame(width: OverlayButton.normalCircleSize, 
+                               height: OverlayButton.normalCircleSize)
+                        .scaleEffect(scaleFactor)
                     if let iconName = iconSystemName {
                         Image(systemName: iconName)
-                            .font(.system(size: iconFontSize, weight: .medium))
-                            .foregroundColor(isHighlighted ? (iconName == "xmark" ? theme.colors.statusError : .black) : Color(UIColor.lightGray))
+                            .font(.system(size: staticIconFontSize, weight: .medium))
+                            .foregroundColor(isHighlighted ? .black : Color(UIColor.lightGray))
                     } else if let text = textIcon {
                         Text(text)
                             .font(.system(size: staticTextIconFontSize, weight: .semibold))
-                            .foregroundColor(isHighlighted ? .black : Color(UIColor.darkGray))
+                            .foregroundColor(isHighlighted ? .black : Color(UIColor.lightGray))
                     }
                 }
             }

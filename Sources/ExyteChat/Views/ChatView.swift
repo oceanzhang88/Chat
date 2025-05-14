@@ -147,14 +147,8 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
     @State private var selectedMedia: GPHMedia? = nil
     
     @State private var inputStyle: InputBarStyle = .default
-    
     // MARK: - Variables for Pushing Content Up with PreferenceKey
     @State private var measuredVoiceOverlayBottomHeight: CGFloat = 0
-    @State private var voiceOverlayActive: Bool = false
-    
-    // ADD these @State variables
-    @State private var cancelRectGlobal: CGRect = .zero
-    @State private var convertToTextRectGlobal: CGRect = .zero
     
     public init(messages: [Message],
                 chatType: ChatType = .conversation,
@@ -260,21 +254,32 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                     }
                 }
             
-            WeChatRecordingOverlayView(
-                inputViewModel: inputViewModel,
-                inputBarHeight: inputViewSize.height, // <-- PASS THE HEIGHT
-                localization: localization
-            )
-            .zIndex(10)
-            .onPreferenceChange(VoiceOverlayBottomAreaHeightPreferenceKey.self) { height in
-                 // Ensure this update happens on the main thread if it might be triggered from a background one
-                 DispatchQueue.main.async {
-                    if self.measuredVoiceOverlayBottomHeight != height {
-                        Logger.log("Received voice overlay bottom height: \(height)")
-                        self.measuredVoiceOverlayBottomHeight = height
+            if inputViewModel.isRecordingAudioForOverlay {
+                WeChatRecordingOverlayView(
+                    inputViewModel: inputViewModel,
+                    inputBarHeight: inputViewSize.height, // <-- PASS THE HEIGHT
+                    localization: localization
+                )
+                .zIndex(10)
+                .onPreferenceChange(VoiceOverlayBottomAreaHeightPreferenceKey.self) { height in
+                    // Ensure this update happens on the main thread if it might be triggered from a background one
+                    DispatchQueue.main.async {
+                        if self.measuredVoiceOverlayBottomHeight != height {
+                            Logger.log("Received voice overlay bottom height: \(height)")
+                            self.measuredVoiceOverlayBottomHeight = height
+                        }
                     }
-                 }
+                }
             }
+        }
+        .onPreferenceChange(CancelRectPreferenceKey.self) { newValue in
+            // Log what's coming in
+            Logger.log("onPreferenceChange(CancelRect): NewRect=\(newValue)")
+
+        }
+        .onPreferenceChange(ConvertToTextRectPreferenceKey.self) { value in
+//            self.convertToTextRectGlobal = value
+            Logger.log("onPreferenceChange(ConvertToTextRectGlobal): NewRect=\(value)")
         }
     }
     
@@ -413,13 +418,14 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                 }
             }
         }
+//        .onChange(of: inputViewModel.isRecordingAudioForOverlay) { _, newValue in
+//            self.voiceOverlayActive = newValue
+//        }
         // Apply conditional bottom padding using the measured height
-        .padding(.bottom, voiceOverlayActive ? measuredVoiceOverlayBottomHeight : 0)
-        .animation(.easeInOut(duration: 0.3), value: voiceOverlayActive)
+        .padding(.bottom, inputViewModel.isRecordingAudioForOverlay ? measuredVoiceOverlayBottomHeight : 0)
+        .animation(.easeInOut(duration: 0.3), value: inputViewModel.isRecordingAudioForOverlay)
 //        .animation(.easeInOut(duration: 0.25), value: measuredVoiceOverlayBottomHeight) // Animate if height itself changes
-        .onChange(of: inputViewModel.isRecordingAudioForOverlay) { _, newValue in
-            self.voiceOverlayActive = newValue
-        }
+        
     }
 
     var inputView: some View {
@@ -435,9 +441,7 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                         WeChatInputView(
                             viewModel: inputViewModel,
                             localization: localization,
-                            inputFieldId: viewModel.inputFieldId,
-                            cancelRectGlobal: cancelRectGlobal,               // Pass down
-                            convertToTextRectGlobal: convertToTextRectGlobal  // Pass down
+                            inputFieldId: viewModel.inputFieldId
                         )
                     case .default:
                         // If style is default, THEN check for a custom builder

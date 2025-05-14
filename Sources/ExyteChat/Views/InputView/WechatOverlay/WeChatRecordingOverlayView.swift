@@ -38,8 +38,6 @@ struct WeChatRecordingOverlayView: View {
     private var cancelIndicatorXOffset: CGFloat {
         let screenWidth = UIScreen.main.bounds.width
         // Target center of the cancel button area (approx -screenW/4 + button_width/2)
-        // This needs to align with where BottomControlsView places its cancel button.
-        // Let's assume BottomControlsView uses padding of 60 on each side for its HStack.
         // Cancel button itself is ~70 wide. So its center is at 60 + 35 = 95 from left.
         // Overlay indicator's center is at screenWidth/2 + Xoffset.
         // So, screenWidth/2 + Xoffset = 95  => Xoffset = 95 - screenWidth/2
@@ -71,16 +69,7 @@ struct WeChatRecordingOverlayView: View {
     }
 
     var body: some View {
-        // Only show the overlay if isRecordingAudioForOverlay is true
-        // AND the phase is one of the active recording/dragging phases.
-        // STT processing and STT complete will have their own UI within this ZStack.
-        if inputViewModel.isRecordingAudioForOverlay &&
-            (inputViewModel.weChatRecordingPhase == .recording ||
-             inputViewModel.weChatRecordingPhase == .draggingToCancel ||
-             inputViewModel.weChatRecordingPhase == .draggingToConvertToText ||
-             inputViewModel.weChatRecordingPhase == .processingASR ||
-             inputViewModel.weChatRecordingPhase == .asrCompleteWithText("")) { // Include STT complete phase
-
+       
             ZStack {
                 DimmedGradientBackgroundView()
 
@@ -118,34 +107,34 @@ struct WeChatRecordingOverlayView: View {
                         currentPhase: inputViewModel.weChatRecordingPhase,
                         localization: localization,
                         inputViewModel: inputViewModel,
-                        onCancel: { // This is for the X button when recording/dragging
-                            inputViewModel.inputViewAction()(.deleteRecord)
-                        },
-                        onConvertToText: { /* Likely not used directly if drag-release triggers */ },
-                        onSendTranscribedText: {
-                            // If transcribedText is empty and there was no STT error, maybe send original voice? Or disallow.
-                            if !inputViewModel.transcribedText.isEmpty {
-                                inputViewModel.text = inputViewModel.transcribedText
-                                // Decide: Send only text? Or text + original voice?
-                                // If only text, ensure recording is cleared from attachments:
-                                // inputViewModel.attachments.recording = nil
-                            } else if inputViewModel.attachments.recording != nil {
-                                // STT failed or empty, but voice note exists, send voice.
-                                inputViewModel.text = "" // Clear any potentially empty transcribed text
-                            }
-                            inputViewModel.inputViewAction()(.send)
-                            // ViewModel's send/reset should set phase to .idle
-                        },
-                        onSendVoiceAfterASR: {
-                            inputViewModel.text = "" // Clear transcribed text
-                            // Ensure recording is in attachments (should be from STT process)
-                            inputViewModel.inputViewAction()(.send)
-                        },
-                        onCancelASR: { // For the "Cancel" button on the STT complete screen
-                            inputViewModel.inputViewAction()(.deleteRecord) // Discards voice and text
-                        },
                         inputBarHeight: inputBarHeight
                     )
+                    { // This is for the X button when recording/dragging
+                        inputViewModel.inputViewAction()(.deleteRecord)
+                    }
+                    onConvertToText: { /* Likely not used directly if drag-release triggers */ }
+                    onSendTranscribedText: {
+                        // If transcribedText is empty and there was no STT error, maybe send original voice? Or disallow.
+                        if !inputViewModel.transcribedText.isEmpty {
+                            inputViewModel.text = inputViewModel.transcribedText
+                            // Decide: Send only text? Or text + original voice?
+                            // If only text, ensure recording is cleared from attachments:
+                            // inputViewModel.attachments.recording = nil
+                        } else if inputViewModel.attachments.recording != nil {
+                            // STT failed or empty, but voice note exists, send voice.
+                            inputViewModel.text = "" // Clear any potentially empty transcribed text
+                        }
+                        inputViewModel.inputViewAction()(.send)
+                        // ViewModel's send/reset should set phase to .idle
+                    }
+                    onSendVoiceAfterASR: {
+                        inputViewModel.text = "" // Clear transcribed text
+                        // Ensure recording is in attachments (should be from STT process)
+                        inputViewModel.inputViewAction()(.send)
+                    }
+                    onCancelASR: { // For the "Cancel" button on the STT complete screen
+                        inputViewModel.inputViewAction()(.deleteRecord) // Discards voice and text
+                    }
                 }
             }
             .ignoresSafeArea(.all)
@@ -161,13 +150,11 @@ struct WeChatRecordingOverlayView: View {
                 }
             }
             .onChange(of: inputViewModel.attachments.recording?.waveformSamples) { _, _ in
-                if inputViewModel.isRecordingAudioForOverlay &&
-                   (inputViewModel.weChatRecordingPhase == .recording ||
-                    inputViewModel.weChatRecordingPhase == .draggingToCancel ||
-                    inputViewModel.weChatRecordingPhase == .draggingToConvertToText) {
-                    if !inputViewModel.isDraggingInCancelZoneOverlay && !inputViewModel.isDraggingToConvertToTextZoneOverlay {
-                         updateWaveformToDisplay()
-                    }
+                if inputViewModel.isRecordingAudioForOverlay {
+                    updateWaveformToDisplay()
+//                    if !inputViewModel.isDraggingInCancelZoneOverlay && !inputViewModel.isDraggingToConvertToTextZoneOverlay {
+//                         
+//                    }
                 }
             }
             .onChange(of: inputViewModel.isDraggingInCancelZoneOverlay) { _, inCancelZone in
@@ -185,18 +172,6 @@ struct WeChatRecordingOverlayView: View {
                     updateWaveformToDisplay(forceUpdate: true)
                 }
             }
-//            .onPreferenceChange(CancelRectPreferenceKey.self) { newValue in
-//                // Log what's coming in
-//                Logger.log("ChatView.onPreferenceChange(CancelRect). NewRect=\(newValue)")
-//
-//            }
-//            .onPreferenceChange(ConvertToTextRectPreferenceKey.self) { value in
-//    //            self.convertToTextRectGlobal = value
-//                Logger.log("ChatView updated ConvertToTextRectGlobal: \(value)")
-//            }
-        } else {
-            EmptyView()
-        }
     }
 
     private func updateWaveformToDisplay(forceUpdate: Bool = false) {
