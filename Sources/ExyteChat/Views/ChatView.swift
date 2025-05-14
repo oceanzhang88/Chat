@@ -152,6 +152,10 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
     @State private var measuredVoiceOverlayBottomHeight: CGFloat = 0
     @State private var voiceOverlayActive: Bool = false
     
+    // ADD these @State variables
+    @State private var cancelRectGlobal: CGRect = .zero
+    @State private var convertToTextRectGlobal: CGRect = .zero
+    
     public init(messages: [Message],
                 chatType: ChatType = .conversation,
                 replyMode: ReplyMode = .quote,
@@ -272,7 +276,6 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                  }
             }
         }
-        
     }
     
     var mainView: some View {
@@ -432,7 +435,9 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                         WeChatInputView(
                             viewModel: inputViewModel,
                             localization: localization,
-                            inputFieldId: viewModel.inputFieldId
+                            inputFieldId: viewModel.inputFieldId,
+                            cancelRectGlobal: cancelRectGlobal,               // Pass down
+                            convertToTextRectGlobal: convertToTextRectGlobal  // Pass down
                         )
                     case .default:
                         // If style is default, THEN check for a custom builder

@@ -15,3 +15,12 @@ struct VoiceOverlayBottomAreaHeightPreferenceKey: PreferenceKey {
         value = max(value, nextValue()) // Take the maximum height reported
     }
 }
+struct CancelRectPreferenceKey: PreferenceKey {
+    static let defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) { value = nextValue() }
+}
+
+struct ConvertToTextRectPreferenceKey: PreferenceKey {
+    static let defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) { value = nextValue() }
+}
