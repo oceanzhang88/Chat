@@ -1,12 +1,4 @@
-//
-//  WeChatRecordingOverlayView.swift
-//  Chat
-//
-//  Created by Yangming Zhang on 5/13/25.
-//
-
-
-// Chat/Sources/ExyteChat/Views/InputView/WeChatRecordingOverlayView.swift
+// Chat/Sources/ExyteChat/Views/InputView/WechatOverlay/WeChatRecordingOverlayView.swift
 import SwiftUI
 
 // MARK: - Main Overlay View
@@ -14,193 +6,158 @@ struct WeChatRecordingOverlayView: View {
     @ObservedObject var inputViewModel: InputViewModel
     @Environment(\.chatTheme) private var theme
 
-    // @State private var isPresented: Bool = true // Controlled by inputViewModel.isRecordingAudioForOverlay
-    @State private var displayWaveformData: [CGFloat] = []
-    @State private var animationStep: Int = 0
+    @State private var displayWaveformData: [CGFloat] = [] // For passing to indicator
+    @State private var animationStep: Int = 0 // For fallback animation
 
     let inputBarHeight: CGFloat
     var localization: ChatLocalization
 
     let timer = Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()
-    private let numberOfSamplesForIndicator: Int = 35
+    private let numberOfSamplesForWaveform: Int = 35 // Number of bars for main waveform
     private let lowVoiceThreshold: CGFloat = 0.1
     private let samplesToAnalyzeForLowVoice = 15
 
-    private let indicatorHeight: CGFloat = 70
-    private let indicatorTipHeight: CGFloat = 8
-
-    private var defaultIndicatorWidth: CGFloat { UIScreen.main.bounds.width * 0.4 }
-    private var cancelIndicatorWidth: CGFloat { UIScreen.main.bounds.width * 0.15 } // Slightly wider for icon
-    private var sttIndicatorWidth: CGFloat { UIScreen.main.bounds.width * 0.45 }    // Similar for STT icon
+    // --- Widths for the indicator based on phase ---
+    private var recordingIndicatorWidth: CGFloat { UIScreen.main.bounds.width * 0.45 } // IMG_0110.jpg reference for relative size
+    private var cancelIndicatorWidth: CGFloat { UIScreen.main.bounds.width * 0.2 } // Smaller for cancel (IMG_0110.jpg)
+    private var asrIndicatorWidth: CGFloat { UIScreen.main.bounds.width * 0.9 }// Wider for ASR text (IMG_0111.jpg)
 
 
-    // Adjusted XOffsets for better positioning
+    // --- X-Offsets for the indicator based on phase ---
+    private var recordingIndicatorXOffset: CGFloat { 0 } // Centered
     private var cancelIndicatorXOffset: CGFloat {
-        let screenWidth = UIScreen.main.bounds.width
-        // Target center of the cancel button area (approx -screenW/4 + button_width/2)
-        // Cancel button itself is ~70 wide. So its center is at 60 + 35 = 95 from left.
-        // Overlay indicator's center is at screenWidth/2 + Xoffset.
-        // So, screenWidth/2 + Xoffset = 95  => Xoffset = 95 - screenWidth/2
-        return 95 - (screenWidth / 2) // Positive X for left, Negative for right
+        if !inputViewModel.cancelRectGlobal.isEmpty {
+            // Center the *cancelIndicator* over the *cancelButton's center*
+            return inputViewModel.cancelRectGlobal.midX - (UIScreen.main.bounds.width / 2)
+        }
+        return -(UIScreen.main.bounds.width * 0.25) // Fallback left
+    }
+    private var asrIndicatorXOffset: CGFloat {
+         // For the wide ASR bubble, we want it to feel like it's expanding towards the "En" button
+         // but it might be close to centered if it's very wide.
+         // Let's try to align its right edge somewhat relative to the "En" button.
+        if !inputViewModel.convertToTextRectGlobal.isEmpty {
+            let screenCenter = UIScreen.main.bounds.width / 2
+            let targetBubbleRightEdge = inputViewModel.convertToTextRectGlobal.maxX - 10 // Align right edge near "En" button's right
+            let bubbleCenterX = targetBubbleRightEdge - (currentRecordingIndicatorWidth / 2)
+            return bubbleCenterX - screenCenter
+        }
+        return 0 // Fallback centered
     }
 
-    private var convertToTextIndicatorXOffset: CGFloat {
-        let screenWidth = UIScreen.main.bounds.width
-        // ConvertToText button is on the right. Approx center: screenWidth - 95
-        // screenWidth/2 + Xoffset = screenWidth - 95 => Xoffset = screenWidth/2 - 95
-        return (screenWidth / 2) - 95
-    }
 
-
-    private var currentIndicatorWidth: CGFloat {
+    // --- Dynamically select current width and offset ---
+    private var currentRecordingIndicatorWidth: CGFloat {
         switch inputViewModel.weChatRecordingPhase {
         case .draggingToCancel: return cancelIndicatorWidth
-        case .draggingToConvertToText: return UIScreen.main.bounds.width // Make it full width
-        default: return defaultIndicatorWidth
+        case .draggingToConvertToText, .processingASR: return asrIndicatorWidth
+        default: return recordingIndicatorWidth // For .recording
         }
     }
 
-    private var currentXOffset: CGFloat {
+    private var currentRecordingIndicatorXOffset: CGFloat {
         switch inputViewModel.weChatRecordingPhase {
         case .draggingToCancel: return cancelIndicatorXOffset
-        case .draggingToConvertToText: return 0 // Center it when full width
-        default: return 0
+//        case .draggingToConvertToText, .processingASR: return asrIndicatorXOffset
+        default: return recordingIndicatorXOffset // For .recording
         }
     }
 
     var body: some View {
-       
-            ZStack {
-                DimmedGradientBackgroundView()
+        ZStack(alignment: .bottom) {
+            DimmedGradientBackgroundView()
 
-                VStack {
-                    Spacer() // Pushes content down
-
-                    // Conditional content based on phase
+            VStack(spacing: 0) {
+                Spacer().frame(height: UIScreen.main.bounds.height * 0.4)  // Pushes dynamic content (indicator or ASR bubble) down
+//                Spacer()
+                
+                // Conditional content based on phase
+                Group {
                     switch inputViewModel.weChatRecordingPhase {
                     case .idle:
-                        EmptyView() // Should not be visible if isRecordingAudioForOverlay is false
-                    case .recording, .draggingToCancel, .draggingToConvertToText:
+                        EmptyView()
+                    case .recording, .draggingToCancel, .draggingToConvertToText, .processingASR:
                         WechatRecordingIndicator(
-                            waveformData: displayWaveformData,
-                            currentPhase: inputViewModel.weChatRecordingPhase // Pass the full phase
+                            waveformData: displayWaveformData,  // Still needed for non-ASR phases
+                            inputViewModel: inputViewModel  // Pass the viewModel
                         )
-                        .frame(width: currentIndicatorWidth, height: indicatorHeight + indicatorTipHeight)
-                        .offset(x: currentXOffset)
-                        .animation(.linear(duration: 0.1), value: currentIndicatorWidth)
-                        .animation(.linear(duration: 0.1), value: currentXOffset)
-                    case .processingASR:
-                        VStack {
-                            ProgressView()
-                                .scaleEffect(1.5)
-                                .padding(.bottom, 5)
-                            Text("Converting...") // Needs localization
-                                .font(.footnote)
-                                .foregroundColor(Color.white.opacity(0.8))
-                        }
-                    case .asrCompleteWithText(let transcribedText):
-                        ASRResultView(inputViewModel: inputViewModel)
+                        .frame(
+                            width: currentRecordingIndicatorWidth
+                        )  // Overlay controls width
+                        // Height is internally managed and animated by WechatRecordingIndicator
+                        .offset(x: currentRecordingIndicatorXOffset)
+                        // Animate width and offset changes
+                        .animation(
+                            .easeInOut(duration: 0.15),
+                            value: currentRecordingIndicatorWidth
+                        )
+                        .animation(
+                            .easeInOut(duration: 0.15),
+                            value: currentRecordingIndicatorXOffset
+                        )
+                        
+                    case .asrCompleteWithText:  // String argument is handled by ASRResultView
+                        // ASRResultView is for the *final static display* after ASR.
+                        // The live text during .draggingToConvertToText is now inside WechatRecordingIndicator.
+                        ASRResultView(
+                            inputViewModel: inputViewModel, localization: localization,
+                            targetWidth: asrIndicatorWidth
+                        )
+                        .transition(.opacity.combined(with: .scale(scale: 1.0)))
                     }
-                    Spacer()
+                }
+                .padding(.bottom, 20)  // Some space above the bottom controls
 
-                    BottomControlsView(
-                        currentPhase: inputViewModel.weChatRecordingPhase,
-                        localization: localization,
-                        inputViewModel: inputViewModel,
-                        inputBarHeight: inputBarHeight
-                    )
-                    { // This is for the X button when recording/dragging
+                Spacer()
+
+                BottomControlsView(
+                    currentPhase: inputViewModel.weChatRecordingPhase,
+                    localization: localization,
+                    inputViewModel: inputViewModel,
+                    inputBarHeight: inputBarHeight,
+                    onCancel: { // For X button during recording/dragging to cancel
                         inputViewModel.inputViewAction()(.deleteRecord)
-                    }
-                    onConvertToText: { /* Likely not used directly if drag-release triggers */ }
-                    onSendTranscribedText: {
-                        // If transcribedText is empty and there was no STT error, maybe send original voice? Or disallow.
-                        if !inputViewModel.transcribedText.isEmpty {
-                            inputViewModel.text = inputViewModel.transcribedText
-                            // Decide: Send only text? Or text + original voice?
-                            // If only text, ensure recording is cleared from attachments:
-                            // inputViewModel.attachments.recording = nil
-                        } else if inputViewModel.attachments.recording != nil {
-                            // STT failed or empty, but voice note exists, send voice.
-                            inputViewModel.text = "" // Clear any potentially empty transcribed text
-                        }
-                        inputViewModel.inputViewAction()(.send)
-                        // ViewModel's send/reset should set phase to .idle
-                    }
-                    onSendVoiceAfterASR: {
-                        inputViewModel.text = "" // Clear transcribed text
-                        // Ensure recording is in attachments (should be from STT process)
-                        inputViewModel.inputViewAction()(.send)
-                    }
-                    onCancelASR: { // For the "Cancel" button on the STT complete screen
-                        inputViewModel.inputViewAction()(.deleteRecord) // Discards voice and text
-                    }
-                }
+                    },
+                    onConvertToText: {
+                        Logger.log("BottomControlsView: onConvertToText (direct tap) placeholder.")
+                        /* Direct tap on "En" if needed, usually drag-release */
+                    },
+                )
             }
-            .ignoresSafeArea(.all)
-            .onAppear {
-                updateWaveformToDisplay()
+        }
+        .edgesIgnoringSafeArea(.all) // Dimmed background covers all
+        .onReceive(timer) { _ in
+            // Update main waveform data only if the indicator is in a state that shows it
+            if inputViewModel.isRecordingAudioForOverlay &&
+               (inputViewModel.weChatRecordingPhase == .recording || inputViewModel.weChatRecordingPhase == .draggingToCancel) {
+                updateWaveformDisplayData()
             }
-            .onReceive(timer) { _ in
-                if inputViewModel.isRecordingAudioForOverlay &&
-                   (inputViewModel.weChatRecordingPhase == .recording ||
-                    inputViewModel.weChatRecordingPhase == .draggingToCancel ||
-                    inputViewModel.weChatRecordingPhase == .draggingToConvertToText) {
-                    updateWaveformToDisplay()
-                }
+        }
+        .onChange(of: inputViewModel.attachments.recording?.waveformSamples) { _, newSamples in
+            if inputViewModel.isRecordingAudioForOverlay &&
+               (inputViewModel.weChatRecordingPhase == .recording || inputViewModel.weChatRecordingPhase == .draggingToCancel) {
+                updateWaveformDisplayData(samples: newSamples ?? [])
             }
-            .onChange(of: inputViewModel.attachments.recording?.waveformSamples) { _, _ in
-                if inputViewModel.isRecordingAudioForOverlay {
-                    updateWaveformToDisplay()
-//                    if !inputViewModel.isDraggingInCancelZoneOverlay && !inputViewModel.isDraggingToConvertToTextZoneOverlay {
-//                         
-//                    }
-                }
-            }
-            .onChange(of: inputViewModel.isDraggingInCancelZoneOverlay) { _, inCancelZone in
-                if !inCancelZone && inputViewModel.weChatRecordingPhase == .draggingToCancel {
-                    // If no longer in cancel zone (but drag didn't end), revert to normal recording UI
-                    // This might be handled by the gesture's .onChanged setting phase to .recording
-                } else {
-                    updateWaveformToDisplay(forceUpdate: true) // Update indicator style even if frozen
-                }
-            }
-            .onChange(of: inputViewModel.isDraggingToConvertToTextZoneOverlay) { _, inSTTZone in
-                 if !inSTTZone && inputViewModel.weChatRecordingPhase == .draggingToConvertToText {
-                    // Revert to normal recording UI if drag moves out
-                } else {
-                    updateWaveformToDisplay(forceUpdate: true)
-                }
-            }
+        }
     }
 
-    private func updateWaveformToDisplay(forceUpdate: Bool = false) {
-        if (inputViewModel.weChatRecordingPhase == .draggingToCancel || inputViewModel.weChatRecordingPhase == .draggingToConvertToText) && !forceUpdate {
-            // Waveform should be static (frozen) when dragging to special zones, unless forced
-            return
-        }
-
-        if inputViewModel.state == .isRecordingHold || inputViewModel.state == .isRecordingTap || inputViewModel.weChatRecordingPhase == .recording {
-            let liveSamples = inputViewModel.attachments.recording?.waveformSamples ?? []
-            if shouldUseRealSamples(liveSamples) {
-                let recentLiveSamples = Array(liveSamples.suffix(numberOfSamplesForIndicator))
-                self.displayWaveformData = padOrTruncateSamples(samples: recentLiveSamples, targetCount: numberOfSamplesForIndicator, defaultValue: 0.02)
-            } else {
-                animationStep += 1
-                self.displayWaveformData = generateDefaultAnimatedWaveformData(count: numberOfSamplesForIndicator, step: animationStep)
-            }
+    // Update waveform data for the main centered waveform
+    private func updateWaveformDisplayData(samples: [CGFloat]? = nil) {
+        let currentSamples = samples ?? inputViewModel.attachments.recording?.waveformSamples ?? []
+        if shouldUseRealSamples(currentSamples) {
+            let recentLiveSamples = Array(currentSamples.suffix(numberOfSamplesForWaveform))
+            self.displayWaveformData = padOrTruncateSamples(samples: recentLiveSamples, targetCount: numberOfSamplesForWaveform, defaultValue: 0.02)
         } else {
             animationStep += 1
-            self.displayWaveformData = generateDefaultAnimatedWaveformData(count: numberOfSamplesForIndicator, step: animationStep)
+            self.displayWaveformData = generateDefaultAnimatedWaveformData(count: numberOfSamplesForWaveform, step: animationStep)
         }
     }
 
+    // Helper methods (shouldUseRealSamples, padOrTruncateSamples, generateDefaultAnimatedWaveformData) remain the same.
     private func shouldUseRealSamples(_ samples: [CGFloat]) -> Bool {
         guard !samples.isEmpty else { return false }
         let recentSamples = samples.suffix(samplesToAnalyzeForLowVoice)
-        if let maxSample = recentSamples.max(), maxSample < lowVoiceThreshold {
-            return false
-        }
+        if let maxSample = recentSamples.max(), maxSample < lowVoiceThreshold { return false }
         return true
     }
 
@@ -219,23 +176,23 @@ struct WeChatRecordingOverlayView: View {
         let wavePosition = CGFloat(step % (middleIndex + 1))
         let spreadDivisor = CGFloat(count) * 0.09
         for i in 0..<count {
-            let distanceFromAbsoluteCenter = CGFloat(abs(i - middleIndex))
-            let gaussianFactor = exp(-pow(distanceFromAbsoluteCenter - wavePosition, 2) / (2 * pow(spreadDivisor, 2)))
-            let randomPeakHeight = CGFloat.random(in: 0.2...0.5)
-            let barHeight = gaussianFactor * randomPeakHeight
+            let distanceFromCenterFocus = CGFloat(abs(i - middleIndex))
+            let gaussianFactor = exp(-pow(distanceFromCenterFocus - wavePosition, 2) / (2 * pow(spreadDivisor, 2)))
+            let peakHeight = CGFloat.random(in: 0.2...0.5)
+            let barHeight = gaussianFactor * peakHeight
             data[i] = max(data[i], min(max(barHeight, 0.05), 1.0))
         }
         return data
     }
 }
 
-// MARK: - Sub-components
-struct DimmedGradientBackgroundView: View { /* ... as before ... */
+// DimmedGradientBackgroundView remains the same
+struct DimmedGradientBackgroundView: View {
     var body: some View {
         LinearGradient(
             gradient: Gradient(colors: [
                 Color(red: 80/255, green: 80/255, blue: 80/255).opacity(0.7),
-                Color(red: 30/255, green: 30/255, blue: 30/255).opacity(1)
+                Color(red: 20/255, green: 20/255, blue: 20/255).opacity(1)
             ]),
             startPoint: .top,
             endPoint: .bottom
@@ -244,30 +201,62 @@ struct DimmedGradientBackgroundView: View { /* ... as before ... */
     }
 }
 
-// MARK: - Preview (Optional, but good for the overlay itself)
+// Preview (Optional, but good for the overlay itself)
 struct WeChatRecordingOverlayView_Previews: PreviewProvider {
-    static var previews: some View {
-        // Simulate a background like a chat view for context
-        ZStack {
-            LinearGradient(
-                gradient: Gradient(colors: [Color.blue.opacity(0.6), Color.purple.opacity(0.6)]),
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .edgesIgnoringSafeArea(.all)
-            
-            VStack {
-                Text("Your Chat Messages Would Be Here")
-                    .font(.headline)
-                    .foregroundColor(.white.opacity(0.8))
-                Image(systemName: "message.fill")
-                    .font(.largeTitle)
-                    .foregroundColor(.white.opacity(0.7))
-                    .padding()
-            }
-            // Then present the overlay
-            //            WeChatRecordingOverlayView(inputViewModel: InputViewModel(),inputBarHeight: 48, )
+    static func createMockVM(phase: WeChatRecordingPhase) -> InputViewModel {
+        let vm = InputViewModel()
+        vm.weChatRecordingPhase = phase
+        vm.isRecordingAudioForOverlay = phase != .idle && phase != .asrCompleteWithText("")
+        if case .draggingToConvertToText = phase {
+            vm.transcribedText = "Testing real-time display..."
         }
-        .preferredColorScheme(.dark) // Often these overlays are designed for dark mode
+        if case .asrCompleteWithText(let text) = phase {
+            vm.transcribedText = text.isEmpty ? "DA DA do do, honey" : text
+        } else if phase == .asrCompleteWithText("") { // Simulate empty ASR result
+             vm.transcribedText = ""
+        }
+        vm.cancelRectGlobal = CGRect(x: 50, y: UIScreen.main.bounds.height - 100, width: 70, height: 70)
+        vm.convertToTextRectGlobal = CGRect(x: UIScreen.main.bounds.width - 120, y: UIScreen.main.bounds.height - 100, width: 70, height: 70)
+        return vm
+    }
+
+    static var previews: some View {
+        let localization = ChatLocalization(
+            inputPlaceholder: "Type a message...",
+            signatureText: "Signature",
+            cancelButtonText: "Cancel",
+            recentToggleText: "Recents",
+            waitingForNetwork: "Waiting...",
+            recordingText: "Recording...",
+            replyToText: "Reply to",
+            holdToTalkText: "Hold to Talk",
+            releaseToSendText: "Release to send",
+            releaseToCancelText: "Release to cancel",
+            convertToTextButton: "En",
+            tapToEditText: "tapToEditText",
+            sendVoiceButtonText: "send"
+            
+        )
+
+        Group {
+            WeChatRecordingOverlayView(inputViewModel: createMockVM(phase: .recording), inputBarHeight: 50, localization: localization)
+                .previewDisplayName("Recording Phase")
+
+            WeChatRecordingOverlayView(inputViewModel: createMockVM(phase: .draggingToCancel), inputBarHeight: 50, localization: localization)
+                .previewDisplayName("Dragging to Cancel")
+
+            WeChatRecordingOverlayView(inputViewModel: createMockVM(phase: .draggingToConvertToText), inputBarHeight: 50, localization: localization)
+                .previewDisplayName("Dragging to ConvertToText")
+            
+            WeChatRecordingOverlayView(inputViewModel: createMockVM(phase: .processingASR), inputBarHeight: 50, localization: localization)
+                .previewDisplayName("Processing ASR")
+
+            WeChatRecordingOverlayView(inputViewModel: createMockVM(phase: .asrCompleteWithText("This is the final text.")), inputBarHeight: 50, localization: localization) // Pass localization
+                            .previewDisplayName("ASR Complete")
+
+            WeChatRecordingOverlayView(inputViewModel: createMockVM(phase: .asrCompleteWithText("")), inputBarHeight: 50, localization: localization) // Pass localization
+                .previewDisplayName("ASR Complete (Empty)")
+        }
+        .preferredColorScheme(.light) // Often these overlays are designed for dark mode
     }
 }

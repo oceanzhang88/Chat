@@ -10,23 +10,26 @@ import SwiftUI
 struct BottomControlsView: View {
     @Environment(\.chatTheme) private var theme
     
-    var currentPhase: WeChatRecordingPhase // Use this
+    var currentPhase: WeChatRecordingPhase
     var localization: ChatLocalization
-    var inputViewModel: InputViewModel
+    @ObservedObject var inputViewModel: InputViewModel
     let inputBarHeight: CGFloat
     
-    var onCancel: () -> Void // For X button during recording/dragging
-    var onConvertToText: () -> Void // For En button (direct tap, if any)
-    var onSendTranscribedText: () -> Void
-    var onSendVoiceAfterASR: () -> Void
-    var onCancelASR: () -> Void
+    var onCancel: () -> Void // For X button during recording/dragging (uses OverlayButton)
+    var onConvertToText: () -> Void // For En button during recording/dragging (uses OverlayButton)
+    // Actions for ASR result buttons are now handled directly by WeChatASRActionButton and the checkmark button
 
+    // Constants for specific button styling
+    private let weChatCheckmarkCircleSize: CGFloat = 65
+    private let weChatCheckmarkIconSize: CGFloat = 25
+
+    // Original constants for dragging phase buttons (if OverlayButton is still used for them)
     private let controlsContentHeight: CGFloat = 130
     private let helperTextMinHeight: CGFloat = 20
-    private var arcAreaHeight: CGFloat { inputBarHeight * 1.8 } // Adjusted for better proportion
+    private var arcAreaHeight: CGFloat { inputBarHeight * 1.8 }
     private var arcSagitta: CGFloat { arcAreaHeight * 0.33 }
-    private var maxButtonContainerWidth: CGFloat { OverlayButton.highlightedCircleSize + 10 }
-    private var maxButtonContainerHeight: CGFloat {
+    private var maxButtonContainerWidthForDrag: CGFloat { OverlayButton.highlightedCircleSize + 10 }
+    private var maxButtonContainerHeightForDrag: CGFloat {
         OverlayButton.highlightedCircleSize + OverlayButton.labelFontSize + 20
     }
     private var chatPushUpHeight: CGFloat { controlsContentHeight }
@@ -37,17 +40,52 @@ struct BottomControlsView: View {
             VStack(spacing: 0) {
                 Spacer()
                 
-                HStack {
-                    if currentPhase == .asrCompleteWithText("") { // Covers empty transcription and error states for button layout
-                        // Buttons for IMG_0112.jpg (STT Complete)
-                        OverlayButton(iconSystemName: "arrow.uturn.backward", label: localization.cancelButtonText, action: onCancelASR)
-                            .frame(width: maxButtonContainerWidth, height: maxButtonContainerHeight)
+                HStack(alignment: .center, spacing: 0) {
+                    if case .asrCompleteWithText = currentPhase {
                         Spacer()
-                        OverlayButton(iconSystemName: "waveform", label: "Send Voice", action: onSendVoiceAfterASR) // Needs localization
-                            .frame(width: maxButtonContainerWidth, height: maxButtonContainerHeight)
+
+                        WeChatASRActionButton(
+                            iconSystemName: "arrow.uturn.backward",
+                            label: localization.cancelButtonText,
+                            action: {
+                                inputViewModel.inputViewAction()(.deleteRecord)
+                            }
+                        )
+                        
                         Spacer()
-                        OverlayButton(iconSystemName: "checkmark", label: "Send", isHighlighted: true, action: onSendTranscribedText) // Needs localization
-                            .frame(width: maxButtonContainerWidth, height: maxButtonContainerHeight)
+                        
+                        WeChatASRActionButton(
+                            iconSystemName: "waveform",
+                            label: localization.sendVoiceButtonText,
+                            action: {
+                                inputViewModel.text = "" // Clear text input
+                                inputViewModel.inputViewAction()(.send) // Send will pick up the recording
+                            }
+                        )
+                        
+                        Spacer()
+                        
+                        // Send Text (Checkmark) Button (WeChat Style)
+                        Button(action: {
+                            inputViewModel.text = inputViewModel.transcribedText
+                            inputViewModel.attachments.recording = nil
+                            inputViewModel.inputViewAction()(.send)
+                        }) {
+                            ZStack {
+                                Circle()
+                                    .fill(.white) // WeChat green
+                                    .frame(width: weChatCheckmarkCircleSize, height: weChatCheckmarkCircleSize)
+                                    .shadow(color: Color.black.opacity(0.2), radius: 3.5, y: 1)
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: weChatCheckmarkIconSize, weight: .medium))
+                                    .foregroundColor(Color(red: 76/255, green: 175/255, blue: 80/255))
+                            }
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .frame(width: 80) // Consistent width with other buttons for spacing
+
+                        Spacer()
+
                     } else {
                         // Buttons for IMG_0110.jpg (Recording/Dragging)
                         OverlayButton(
@@ -56,42 +94,49 @@ struct BottomControlsView: View {
                             isHighlighted: currentPhase == .draggingToCancel,
                             action: onCancel
                         )
-                        .frame(width: maxButtonContainerWidth, height: maxButtonContainerHeight)
-                        .background(GeometryReader { geo in
+                        .frame(width: maxButtonContainerWidthForDrag, height: maxButtonContainerHeightForDrag)
+                        .background(GeometryReader { geo -> Color in
                             let frameInGlobal = geo.frame(in: .global)
-                            if inputViewModel.cancelRectGlobal != frameInGlobal {
-                                Logger.log("BottomControlsView (Cancel Button): GeometryReader frame(in: .global) = \(frameInGlobal)")
+                            // Calculate the new frame with increased area
+                            let increasedRect = calculateIncreasedDragArea(frameInGlobal: frameInGlobal, type: "xmark")
+
+                            if inputViewModel.cancelRectGlobal != increasedRect {
+                                Logger.log("BottomControlsView (Cancel Button): GeometryReader original frame(in: .global) = \(frameInGlobal)")
+                                Logger.log("BottomControlsView (Cancel Button): GeometryReader increasedRect = \(increasedRect)")
                                 DispatchQueue.main.async {
-                                    inputViewModel.cancelRectGlobal = frameInGlobal
+                                    inputViewModel.cancelRectGlobal = increasedRect
                                 }
                             }
-                            return Color.yellow.preference(key: CancelRectPreferenceKey.self, value: frameInGlobal)
+                            return Color.yellow
                         })
                         
 
                         Spacer()
 
                         OverlayButton(
-                            textIcon: localization.convertToTextButton, // e.g., "En"
+                            textIcon: localization.convertToTextButton,
                             label: localization.convertToTextButton,
                             isHighlighted: currentPhase == .draggingToConvertToText,
-                            action: onConvertToText // Direct tap action might be less relevant if drag-release is primary
+                            action: onConvertToText
                         )
-                        .frame(width: maxButtonContainerWidth, height: maxButtonContainerHeight)
-                        .background(GeometryReader { geo in
+                        .frame(width: maxButtonContainerWidthForDrag, height: maxButtonContainerHeightForDrag)
+                        .background(GeometryReader { geo -> Color in
                             let frameInGlobal = geo.frame(in: .global)
-                            if inputViewModel.convertToTextRectGlobal != frameInGlobal {
-                                Logger.log("BottomControlsView (To Text Button): GeometryReader frame(in: .global) = \(frameInGlobal)")
+                            let increasedRect = calculateIncreasedDragArea(frameInGlobal:frameInGlobal, type: localization.convertToTextButton)
+
+                            if inputViewModel.convertToTextRectGlobal != increasedRect {
+                                Logger.log("BottomControlsView (To Text Button): GeometryReader original frame(in: .global) = \(frameInGlobal)")
+                                Logger.log("BottomControlsView (To Text Button): GeometryReader increasedRect = \(increasedRect)")
                                 DispatchQueue.main.async {
-                                    inputViewModel.convertToTextRectGlobal = frameInGlobal
+                                    inputViewModel.convertToTextRectGlobal = increasedRect
                                 }
                             }
-                            return Color.yellow.preference(key: ConvertToTextRectPreferenceKey.self, value: frameInGlobal)
+                            return Color.yellow
                         })
                     }
                 }
-                .padding(.horizontal, 60)
-                .padding(.bottom, 2)
+                .padding(.horizontal, currentPhase == .asrCompleteWithText("") ? 20 : 60)
+                .padding(.bottom, currentPhase == .asrCompleteWithText("") ? 15 : 2)
                 
                 Text(helperTextForPhase())
                     .font(.system(size: 13))
@@ -101,6 +146,7 @@ struct BottomControlsView: View {
             }
             .frame(height: controlsContentHeight)
 
+            // Arc Background Shape
             ZStack {
                 ArcBackgroundShape(sagitta: arcSagitta)
                     .fill(arcBackgroundColor())
@@ -116,6 +162,19 @@ struct BottomControlsView: View {
         .background(GeometryReader { geometry in
             Color.clear.preference(key: VoiceOverlayBottomAreaHeightPreferenceKey.self, value: chatPushUpHeight)
         })
+    }
+    
+    private func calculateIncreasedDragArea(frameInGlobal: CGRect, type: String) -> CGRect {
+        // Calculate the new frame with increased area
+        let newWidth = UIScreen.main.bounds.width * (type == "xmark" ?  0.55 : 0.45)
+        let newHeight = frameInGlobal.height * 1.2
+        // It's generally safer to adjust the size and keep the origin the same,
+        // or adjust the origin to keep the center the same.
+        // Here, we'll keep the origin the same and just expand width/height.
+        // If you need to keep the center, the origin calculation would be:
+         let newX = frameInGlobal.origin.x - (newWidth - frameInGlobal.width) / 2
+         let newY = frameInGlobal.origin.y - (newHeight - frameInGlobal.height) / 2
+         return CGRect(x: newX, y: newY, width: newWidth, height: newHeight)
     }
 
     private func helperTextForPhase() -> String {
@@ -135,11 +194,11 @@ struct BottomControlsView: View {
     }
 
     private func arcBackgroundColor() -> LinearGradient {
-        let notInArc = currentPhase == .draggingToCancel || currentPhase == .draggingToConvertToText
+        let notInArcActionZone = currentPhase == .draggingToCancel || currentPhase == .draggingToConvertToText
 
-        let topColor = notInArc ? Color(red: 80/255, green: 80/255, blue: 80/255) : Color.white.opacity(0.8)
-        let midColor = notInArc ? Color(red: 70/255, green: 70/255, blue: 70/255) : Color.white.opacity(0.75)
-        let bottomColor = notInArc ? Color(red: 60/255, green: 60/255, blue: 60/255) : Color.white.opacity(0.7)
+        let topColor = notInArcActionZone ? Color(red: 80/255, green: 80/255, blue: 80/255).opacity(0.85) : Color.white.opacity(0.15)
+        let midColor = notInArcActionZone ? Color(red: 70/255, green: 70/255, blue: 70/255).opacity(0.8) : Color.white.opacity(0.1)
+        let bottomColor = notInArcActionZone ? Color(red: 60/255, green: 60/255, blue: 60/255).opacity(0.75) : Color.white.opacity(0.05)
 
         return LinearGradient(
             gradient: Gradient(stops: [

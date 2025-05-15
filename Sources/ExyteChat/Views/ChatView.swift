@@ -443,6 +443,7 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                             localization: localization,
                             inputFieldId: viewModel.inputFieldId
                         )
+                        .opacity(inputViewModel.shouldHideMainInputBar ? 0 : 1)
                     case .default:
                         // If style is default, THEN check for a custom builder
                         InputView(
@@ -586,7 +587,9 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
             holdToTalkText: String(localized: "Hold to Talk", bundle: .module),
             releaseToSendText: String(localized: "Release to send", bundle: .module),
             releaseToCancelText: String(localized: "Release to cancel", bundle: .module),
-            convertToTextButton: String(localized: "To Text", bundle: .module) // <<<< ADDED THIS LINE
+            convertToTextButton: String(localized: "EN", bundle: .module), // <<<< ADDED THIS LINE,
+            tapToEditText: String(localized: "Tap the bubble to edit the text", bundle: .module), // New
+            sendVoiceButtonText: String(localized: "Send Voice", bundle: .module) // New
         )
     }
 }

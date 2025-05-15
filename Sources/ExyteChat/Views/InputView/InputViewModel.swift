@@ -3,6 +3,7 @@ import Foundation
 import Combine
 import ExyteMediaPicker // Assuming Media is from here
 import GiphyUISDK // Assuming GPHMedia is from here
+import Speech // <--- ADD THIS LINE
 
 // ADD this enum:
 public enum WeChatRecordingPhase: Sendable, Equatable { // Make it Equatable for @Published
@@ -20,7 +21,15 @@ final class InputViewModel: ObservableObject {
 
     @Published var text = ""
     @Published var attachments = InputViewAttachments()
-
+    @Published var transcribedText: String = "" // For STT result
+    @Published var asrErrorMessage: String? = nil // For STT errors
+    @Published var isEditingASRText: Bool = false
+    @Published var showGiphyPicker = false
+    @Published var showPicker = false
+    @Published var mediaPickerMode = MediaPickerMode.photos
+    @Published var showActivityIndicator = false
+    @Published var shouldHideMainInputBar: Bool = false // NEW PROPERTY
+    
     // Existing state for general input view status
     @Published var state: InputViewState = .empty {
         didSet {
@@ -29,7 +38,6 @@ final class InputViewModel: ObservableObject {
             }
         }
     }
-
     // New WeChat-specific phase for detailed gesture interaction
     @Published var weChatRecordingPhase: WeChatRecordingPhase = .idle {
         didSet {
@@ -46,12 +54,15 @@ final class InputViewModel: ObservableObject {
             if isRecordingAudioForOverlay != shouldShowOverlay {
                 isRecordingAudioForOverlay = shouldShowOverlay
             }
+            
+            // Control main ChatView input bar visibility based on overlay's active phases
+            let newShouldHideMainInputBar = weChatRecordingPhase == .asrCompleteWithText("")
+            if self.shouldHideMainInputBar != newShouldHideMainInputBar {
+                self.shouldHideMainInputBar = newShouldHideMainInputBar
+                Logger.log("shouldHideMainInputBar changed to \(self.shouldHideMainInputBar)")
+            }
         }
     }
-
-    @Published var transcribedText: String = "" // For STT result
-    @Published var asrErrorMessage: String? = nil // For STT errors
-
     @Published var isRecordingAudioForOverlay: Bool = false {
         didSet {
             if oldValue != isRecordingAudioForOverlay {
@@ -86,14 +97,9 @@ final class InputViewModel: ObservableObject {
         }
     }
 
-
-    @Published var showGiphyPicker = false
-    @Published var showPicker = false
-    @Published var mediaPickerMode = MediaPickerMode.photos
-    @Published var showActivityIndicator = false
-
     var recordingPlayer: RecordingPlayer?
     var didSendMessage: ((DraftMessage) -> Void)?
+    
     private var recorder = Recorder() // Assuming Recorder is an actor
     private var saveEditingClosure: ((String) -> Void)?
     private var recordPlayerSubscription: AnyCancellable?
@@ -120,11 +126,30 @@ final class InputViewModel: ObservableObject {
         if isDraggingToConvertToTextZoneOverlay { isDraggingToConvertToTextZoneOverlay = false }
         if weChatRecordingPhase != .idle { weChatRecordingPhase = .idle } // Ensure reset on stop
     }
+    
+    func startEditingASRText() {
+        // Ensure we are in a state where editing makes sense
+        guard case .asrCompleteWithText = self.weChatRecordingPhase, self.asrErrorMessage == nil else {
+            Logger.log("startEditingASRText: Not in a valid state to edit or ASR had an error.")
+            return
+        }
+
+        self.text = self.transcribedText // Populate the main input field
+        self.isEditingASRText = true
+        // self.attachments.recording = nil // Decide: Do we discard voice immediately on edit, or on send of text?
+                                        // Let's discard on send of text for now, to allow user to still send voice if they cancel edit.
+        self.weChatRecordingPhase = .idle // This will hide the WeChatRecordingOverlayView
+
+        Logger.log("startEditingASRText: Switched to editing. Text: \(self.text)")
+        // Notify WeChatInputView to switch to text mode and focus
+//        NotificationCenter.default.post(name: .switchToTextInputAndFocus, object: self.inputFieldId)
+    }
 
     func reset() {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             Logger.log("reset called. Current state before reset: \(self.state)")
+            self.isEditingASRText = false // Add this
             self.showPicker = false
             self.showGiphyPicker = false
             self.text = ""
@@ -203,6 +228,11 @@ final class InputViewModel: ObservableObject {
             showPicker = true
             weChatRecordingPhase = .idle
         case .send:
+            if self.isEditingASRText {
+                self.attachments.recording = nil // Discard voice if text from ASR edit is sent
+                self.isEditingASRText = false // Reset editing state
+                Logger.log("Sending edited ASR text, original voice recording discarded.")
+            }
             send() // send() will handle recorder stop and state resets
 
         case .recordAudioHold:
@@ -284,6 +314,7 @@ final class InputViewModel: ObservableObject {
                 self.attachments.recording = nil
                 self.transcribedText = ""
                 self.asrErrorMessage = nil
+                self.isEditingASRText = false // Also reset editing state here
                 self.state = .empty
                 self.weChatRecordingPhase = .idle
                 self.isDraggingInCancelZoneOverlay = false
@@ -351,13 +382,71 @@ final class InputViewModel: ObservableObject {
         guard let recording = self.attachments.recording, let audioURL = recording.url else {
             Logger.log("performSpeechToText: No valid recording URL.")
             await MainActor.run {
-                self.asrErrorMessage = "No audio to transcribe."
-                self.weChatRecordingPhase = .idle // Or an STT error phase
+                self.asrErrorMessage = "No audio to transcribe." // TODO: Localize
+                self.weChatRecordingPhase = .asrCompleteWithText("") // Use empty string to signify error for button layout
             }
             return
         }
 
         Logger.log("Starting STT for: \(audioURL.lastPathComponent)")
+        
+        // ***** START OF ACTUAL STT IMPLEMENTATION (EXAMPLE WITH SFSpeechRecognizer) *****
+        // This is a simplified example. You'll need more robust error handling,
+        // permission checks (though `recordAudio` should handle initial mic permission),
+        // and potentially UI for STT permission if not covered by mic permission.
+
+        // On-device STT (iOS 10+)
+        // Ensure you have added `NSSpeechRecognitionUsageDescription` to your app's Info.plist
+        // and requested SFSpeechRecognizer authorization if needed separately, though microphone
+        // permission often covers STT for the audio captured.
+        
+        let recognizer = SFSpeechRecognizer() // Uses user's current locale by default
+        guard let speechRecognizer = recognizer, speechRecognizer.isAvailable else {
+            Logger.log("STT: SFSpeechRecognizer not available.")
+            await MainActor.run {
+                self.asrErrorMessage = "Speech recognition is not available right now." // TODO: Localize
+                self.weChatRecordingPhase = .asrCompleteWithText("")
+            }
+            return
+        }
+
+        let request = SFSpeechURLRecognitionRequest(url: audioURL)
+        // request.shouldReportPartialResults = true // If you want live updates (more complex UI handling)
+
+        speechRecognizer.recognitionTask(with: request) { [weak self] (result, error) in
+            guard let self = self else { return }
+            
+            Task { @MainActor in // Ensure UI updates are on the main thread
+                if let error = error {
+                    Logger.log("STT Error: \(error.localizedDescription)")
+                    self.asrErrorMessage = error.localizedDescription // Or a more user-friendly message
+                    self.weChatRecordingPhase = .asrCompleteWithText("")
+                    return
+                }
+                
+                if let recognitionResult = result {
+                    let bestTranscription = recognitionResult.bestTranscription.formattedString
+                    Logger.log("STT Success: \(bestTranscription)")
+                    self.transcribedText = bestTranscription
+                    self.asrErrorMessage = nil
+                    self.weChatRecordingPhase = .asrCompleteWithText(bestTranscription)
+
+                    if recognitionResult.isFinal {
+                        // You might do final cleanup or logging here
+                        Logger.log("STT isFinal: true")
+                    }
+                } else if error == nil { // No result and no error typically means no speech detected
+                     Logger.log("STT: No speech detected or result is empty.")
+                     self.transcribedText = "" // Explicitly empty
+                     self.asrErrorMessage = nil // No error, just no text
+                     self.weChatRecordingPhase = .asrCompleteWithText("") // Show buttons for empty result
+                }
+            }
+        }
+        // ***** END OF ACTUAL STT IMPLEMENTATION EXAMPLE *****
+        
+        // Keep the old mock logic commented out or remove if using real STT
+        /*
         // Simulate STT processing
         try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds delay
 
@@ -374,11 +463,13 @@ final class InputViewModel: ObservableObject {
                 let mockError = "Speech recognition failed."
                 self.asrErrorMessage = mockError
                 // Decide if .hasRecording or .idle is better if STT fails but voice note exists
-                self.weChatRecordingPhase = .idle // Or specific STT error phase
+                self.weChatRecordingPhase = .asrCompleteWithText("") // Use empty string to signify error
                 Logger.log("STT Failed: \(mockError)")
             }
         }
+        */
     }
+
 }
 
 private extension InputViewModel {

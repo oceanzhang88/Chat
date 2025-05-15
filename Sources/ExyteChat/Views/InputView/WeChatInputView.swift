@@ -58,6 +58,21 @@ struct WeChatInputView: View {
             if globalFocusState.focus == .uuid(self.inputFieldId) {
                 isTextFocused = true
             }
+            // Listen for the notification to switch to text input and focus
+            NotificationCenter.default.addObserver(forName: .switchToTextInputAndFocus, object: nil, queue: .main) { notification in
+                guard let focusedFieldId = notification.object as? UUID, focusedFieldId == self.inputFieldId else { return }
+                
+                if self.viewModel.isEditingASRText {
+                    self.isVoiceMode = false // Switch to keyboard mode
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { // Brief delay for UI to update
+                        self.isTextFocused = true // Focus the text field
+                        self.globalFocusState.focus = .uuid(self.inputFieldId) // Ensure global focus state is also set
+                    }
+                }
+            }
+        }
+        .onDisappear {
+            NotificationCenter.default.removeObserver(self, name: .switchToTextInputAndFocus, object: nil)
         }
     }
 
@@ -106,6 +121,7 @@ struct WeChatInputView: View {
                     .padding(.horizontal, 10)
              }
             .foregroundStyle(theme.colors.inputText)
+            .customFocus($globalFocusState.focus, equals: .uuid(inputFieldId)) // Ensure this uses the passed/managed inputFieldId
             .focused($isTextFocused)
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
@@ -118,7 +134,14 @@ struct WeChatInputView: View {
                 if newValue != .uuid(self.inputFieldId) { isTextFocused = false }
             }
             .onChange(of: isTextFocused) { _, focused in
-                if focused { globalFocusState.focus = .uuid(self.inputFieldId) }
+                if focused {
+                    globalFocusState.focus = .uuid(self.inputFieldId)
+                    viewModel.isEditingASRText = false // If user manually focuses, assume they are done with ASR edit intent
+                } else {
+                    if globalFocusState.focus == .uuid(self.inputFieldId) && !viewModel.isEditingASRText { // Don't clear global focus if we are programmatically focusing due to ASR edit
+                        // globalFocusState.focus = nil // This might be too aggressive if focus shifts to another element controlled by GlobalFocusState
+                    }
+                }
             }
     }
 
@@ -164,50 +187,54 @@ struct WeChatInputView: View {
             .onEnded { value in
                 Logger.log("Gesture.onEnded: LongPress active at end=\(value.first ?? false)")
                 let longPressWasSustained = value.first ?? false
-                let endedPhase = viewModel.weChatRecordingPhase // Capture before it's reset
+                let endedOverCancel = viewModel.isDraggingInCancelZoneOverlay // Capture before reset
+                let endedOverConvertToText = viewModel.isDraggingToConvertToTextZoneOverlay // Capture before reset
 
-                if longPressWasSustained {
-                    switch endedPhase {
-                    case .draggingToCancel:
-                        Logger.log("Gesture Ended on .draggingToCancel. Action: deleteRecord")
-                        performInputAction(.deleteRecord)
-                    case .draggingToConvertToText:
-                        Logger.log("Gesture Ended on .draggingToConvertToText. Action: stop and prepare for STT")
-                        performInputAction(.stopRecordAudio) // This gets the recording ready
-                        Task { @MainActor in
-                            if viewModel.state == .hasRecording, let _ = viewModel.attachments.recording {
-                                viewModel.weChatRecordingPhase = .processingASR
-                                Logger.log("Transitioning to .processingSTT for actual STT")
-                                await viewModel.performSpeechToText() // Actual STT call
-                            } else {
-                                Logger.log("No valid recording after stop for STT. Cleaning up.")
-                                performInputAction(.deleteRecord)
-                            }
-                        }
-                    case .recording:
-                        Logger.log("Gesture Ended on .recording (normal release). Action: send")
-                        performInputAction(.send)
-                    default:
-                        Logger.log("Gesture Ended on unexpected phase \(endedPhase) while sustained. Cleaning up.")
-                        performInputAction(.deleteRecord)
-                    }
-                } else {
-                    Logger.log("Gesture Ended: Long press not sustained. Current VM phase: \(viewModel.weChatRecordingPhase)")
-                    if viewModel.weChatRecordingPhase == .recording || viewModel.state == .isRecordingHold {
-                        performInputAction(.deleteRecord)
-                    }
-                }
-
-                // Reset UI drag states. The core phase (.idle, .processingSTT, .sttComplete)
-                // will be set by the actions themselves.
+                // Reset UI drag states immediately
                 viewModel.isDraggingInCancelZoneOverlay = false
                 viewModel.isDraggingToConvertToTextZoneOverlay = false
 
-                // If not moving into an STT processing or complete state, ensure phase is idle.
-                if endedPhase != .processingASR && endedPhase != .asrCompleteWithText("") && viewModel.weChatRecordingPhase != .processingASR && viewModel.weChatRecordingPhase != .asrCompleteWithText("") {
-                     // Check viewModel.weChatRecordingPhase again because actions might have already set it to .idle
-                    if viewModel.weChatRecordingPhase != .idle {
-                        // viewModel.weChatRecordingPhase = .idle // Let actions handle final idle state
+                if longPressWasSustained {
+                    if endedOverCancel {
+                        Logger.log("Gesture Ended on .draggingToCancel. Action: deleteRecord")
+                        performInputAction(.deleteRecord)
+                    } else if endedOverConvertToText {
+                        Logger.log("Gesture Ended on .draggingToConvertToText. Action: stop and prepare for STT")
+
+                        // 1. Stop recording (this gets the audio file URL and duration)
+                        performInputAction(.stopRecordAudio) // This sets viewModel.state = .hasRecording if successful
+                            
+                        // 2. Initiate STT
+                        Task { @MainActor in // Ensure UI updates and async calls are managed on MainActor
+                            viewModel.weChatRecordingPhase = .processingASR
+                            await viewModel.performSpeechToText() // This will eventually set .asrCompleteWithText
+                            // Check if stopRecordAudio successfully resulted in a recording
+//                            if viewModel.state == .hasRecording, let _ = viewModel.attachments.recording {
+//                                viewModel.weChatRecordingPhase = .processingASR // Show "Processing..."
+//                                Logger.log("Transitioning to .processingASR for actual STT")
+//                                
+//                            } else {
+//                                Logger.log("No valid recording after stop for STT. Cleaning up.")
+//                                // If there was no recording, or stopRecordAudio failed, treat as cancel
+//                                performInputAction(.deleteRecord)
+//                            }
+                        }
+                    } else { // Released in the "send voice" zone (center)
+                        Logger.log("Gesture Ended on .recording (normal release). Action: send")
+                        performInputAction(.send) // This will send the voice memo directly
+                    }
+                } else { // Long press was not sustained (too short)
+                    Logger.log("Gesture Ended: Long press not sustained. Current VM phase: \(viewModel.weChatRecordingPhase)")
+                    // If it was a very short tap, it might not even have started recording.
+                    // If it did start (e.g., state became .isRecordingHold), then cancel.
+                    if viewModel.weChatRecordingPhase == .recording || viewModel.state == .isRecordingHold {
+                        performInputAction(.deleteRecord)
+                    }
+                    // Ensure phase is reset if it wasn't a sustained action leading to send/stt/cancel
+                    if viewModel.weChatRecordingPhase != .idle &&
+                       viewModel.weChatRecordingPhase != .processingASR && // Already handled above
+                       viewModel.weChatRecordingPhase != .asrCompleteWithText("") { // Already handled above
+                        viewModel.weChatRecordingPhase = .idle
                     }
                 }
             }
