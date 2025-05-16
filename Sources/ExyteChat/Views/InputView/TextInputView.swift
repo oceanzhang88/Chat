@@ -31,6 +31,7 @@ struct TextInputView: View {
                     globalFocusState.focus = .uuid(inputFieldId)
                 }
             )
+
     }
     
     private func isMediaGiphyAvailable() -> Bool {

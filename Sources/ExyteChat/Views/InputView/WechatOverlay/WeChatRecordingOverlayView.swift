@@ -121,7 +121,7 @@ struct WeChatRecordingOverlayView: View {
                     onConvertToText: {
                         DebugLogger.log("BottomControlsView: onConvertToText (direct tap) placeholder.")
                         /* Direct tap on "En" if needed, usually drag-release */
-                    },
+                    }
                 )
             }
         }

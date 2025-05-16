@@ -176,18 +176,7 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
             mainView
                 .background(chatBackground())
                 .environmentObject(keyboardState)
-                .onAppear() {
-                    if isGiphyAvailable() {
-                        if let giphyKey = giphyConfig.giphyKey {
-                            if !giphyConfigured {
-                                giphyConfigured = true
-                                Giphy.configure(apiKey: giphyKey)
-                            }
-                        } else {
-                            print("WARNING: giphy key not provided, please pass a key using giphyConfig")
-                        }
-                    }
-                }
+
                 .fullScreenCover(isPresented: $viewModel.fullscreenAttachmentPresented) {
                     let attachments = sections.flatMap { section in section.rows.flatMap { $0.message.attachments } }
                     let index = attachments.firstIndex { $0.id == viewModel.fullscreenAttachmentItem?.id }
@@ -206,6 +195,24 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                         .ignoresSafeArea()
                     }
                 }
+            .onAppear() {
+                if isGiphyAvailable() {
+                    if let giphyKey = giphyConfig.giphyKey {
+                        if !giphyConfigured {
+                            giphyConfigured = true
+                            Giphy.configure(apiKey: giphyKey)
+                        }
+                    } else {
+                        print("WARNING: giphy key not provided, please pass a key using giphyConfig")
+                    }
+                }
+            }
+            .onChange(of: selectedMedia) {
+                if let giphyMedia = selectedMedia {
+                    inputViewModel.attachments.giphyMedia = giphyMedia
+                    inputViewModel.send()
+                }
+            }
                 .sheet(isPresented: $inputViewModel.showGiphyPicker) {
                     if giphyConfig.giphyKey != nil {
                         GiphyEditorView(
@@ -229,12 +236,6 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                         localization: localization
                     )
                     .environmentObject(globalFocusState)
-                }
-                .onChange(of: selectedMedia) {
-                    if let giphyMedia = selectedMedia {
-                        inputViewModel.attachments.giphyMedia = giphyMedia
-                        inputViewModel.send()
-                    }
                 }
                 // ---> ADD THIS MODIFIER <---
                 .onChange(of: keyboardState.isShown) { _, isShown in
@@ -271,15 +272,6 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                     }
                 }
             }
-        }
-        .onPreferenceChange(CancelRectPreferenceKey.self) { newValue in
-            // Log what's coming in
-            DebugLogger.log("onPreferenceChange(CancelRect): NewRect=\(newValue)")
-
-        }
-        .onPreferenceChange(ConvertToTextRectPreferenceKey.self) { value in
-//            self.convertToTextRectGlobal = value
-            DebugLogger.log("onPreferenceChange(ConvertToTextRectGlobal): NewRect=\(value)")
         }
     }
     
@@ -418,13 +410,9 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                 }
             }
         }
-//        .onChange(of: inputViewModel.isRecordingAudioForOverlay) { _, newValue in
-//            self.voiceOverlayActive = newValue
-//        }
         // Apply conditional bottom padding using the measured height
         .padding(.bottom, inputViewModel.isRecordingAudioForOverlay ? measuredVoiceOverlayBottomHeight : 0)
-        .animation(.easeInOut(duration: 0.3), value: inputViewModel.isRecordingAudioForOverlay)
-//        .animation(.easeInOut(duration: 0.25), value: measuredVoiceOverlayBottomHeight) // Animate if height itself changes
+        .animation(.easeInOut(duration: 0.25), value: measuredVoiceOverlayBottomHeight)
         
     }
 
