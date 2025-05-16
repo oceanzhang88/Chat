@@ -14,7 +14,7 @@ struct ChatExampleView: View {
     @StateObject private var viewModel: ChatExampleViewModel
 
     private let title: String
-    private let recorderSettings = RecorderSettings(sampleRate: 16000, numberOfChannels: 1, linearPCMBitDepth: 16)
+    private let recorderSettings = RecorderSettings(sampleRate: 44100.0, numberOfChannels: 1, linearPCMBitDepth: 16)
     
     init(viewModel: ChatExampleViewModel, title: String) {
         _viewModel = StateObject(wrappedValue: viewModel)

@@ -1,40 +1,39 @@
-// Chat/Sources/ExyteChat/Views/Recording/Recorder.swift
+//
+//  Recorder.swift
+//  
+//
+//  Created by Alisa Mylnikova on 09.03.2023.
+//
+
 import Foundation
-import AVFoundation
+@preconcurrency import AVFoundation
 
 final actor Recorder {
+
+    // duration and waveform samples
     typealias ProgressHandler = @Sendable (Double, [CGFloat]) -> Void
 
     private let audioSession = AVAudioSession.sharedInstance()
     private var audioRecorder: AVAudioRecorder?
-    private var progressUpdateTask: Task<Void, Never>?
-
+    private var audioTimer: Task<Void, Never>?
+    
     private var currentRecordingURL: URL?
-    private var currentWaveformSamples: [CGFloat] = []
     private var currentDuration: TimeInterval = 0
-    private let maxWaveformSamples = 100 // Define the maximum number of samples
-
-
+    private var soundSamples: [CGFloat] = []
     private var recorderSettings = RecorderSettings()
 
     var isAllowedToRecordAudio: Bool {
-        audioSession.recordPermission == .granted
+        AVAudioApplication.shared.recordPermission == .granted
     }
 
     var isRecording: Bool {
         audioRecorder?.isRecording ?? false
     }
 
-    init() {
-        DebugLogger.log("Recorder init")
-        // Defer session category setup until it's actually needed (in startRecording)
-    }
-
     func setRecorderSettings(_ recorderSettings: RecorderSettings) {
         self.recorderSettings = recorderSettings
-        DebugLogger.log("Settings updated: \(recorderSettings)")
     }
-
+    
     func requestDirectPermission() async -> Bool {
         if isAllowedToRecordAudio { return true }
         DebugLogger.log("Requesting direct audio permission.")
@@ -42,238 +41,161 @@ final actor Recorder {
     }
 
     func startRecording(durationProgressHandler: @escaping ProgressHandler) async -> URL? {
-            DebugLogger.log("Attempting to start recording. Current recorder state: \(audioRecorder != nil), isRecording: \(self.isRecording)")
-            guard isAllowedToRecordAudio else {
-                DebugLogger.log("StartRecording called but permission not granted.")
-                return nil
+        if !isAllowedToRecordAudio {
+            let granted = await audioSession.requestRecordPermission()
+            if granted {
+                return startRecordingInternal(durationProgressHandler)
             }
-
-            if audioRecorder != nil {
-                DebugLogger.log("Existing audioRecorder instance found. Ensuring it's stopped and cleaned up.")
-                _ = stopRecording() // This nils out audioRecorder and cancels task
-            }
-
-            currentWaveformSamples = []
-            currentDuration = 0
-            
-            let newRecordingUrl = FileManager.tempDirPath.appendingPathComponent(UUID().uuidString + (fileExtension(for: recorderSettings.audioFormatID) ?? ".m4a"))
-            self.currentRecordingURL = newRecordingUrl
-
-            let settings: [String : Any] = [
-                    AVFormatIDKey: Int(recorderSettings.audioFormatID),
-                    AVSampleRateKey: recorderSettings.sampleRate,
-                    AVNumberOfChannelsKey: recorderSettings.numberOfChannels,
-                    AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
-                ]
-
-            do {
-                DebugLogger.log("Configuring audio session for recording.")
-                // Check if session is active and in a different category/mode.
-                // If so, it's often safer to deactivate before changing category.
-                if audioSession.category != .playAndRecord || audioSession.mode != .default {
-                    DebugLogger.log("Session category/mode is NOT .playAndRecord/default (current: \(audioSession.category.rawValue)/\(audioSession.mode.rawValue)).")
-                    // Deactivate if it's active in another category, to allow clean category change.
-                    // This check `audioSession.isOtherAudioPlaying` might not be fully reliable for session's own active state.
-                    // A direct check of `AVAudioSession.sharedInstance().secondaryAudioShouldBeSilencedHint` or if the app truly believes it should be active.
-                    // For now, let's assume if category is wrong, we force reconfiguration.
-                    if audioSession.isInputAvailable { // A proxy for "is it potentially active in some form?"
-                        // It is generally not recommended to call setActive(false) if other audio (like music) is playing,
-                        // unless you intend to interrupt it. But here, we are about to record, which will interrupt.
-                        do {
-                            try audioSession.setActive(false, options: .notifyOthersOnDeactivation)
-                            DebugLogger.log("Audio session deactivated to change category.")
-                        } catch {
-                            DebugLogger.log("Failed to deactivate audio session before category change: \(error). Proceeding with setCategory.")
-                            // Potentially problematic, but setCategory might still work or throw its own error.
-                        }
-                    }
-                    try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothA2DP, .allowAirPlay])
-                    DebugLogger.log("Audio session category set to .playAndRecord/default.")
-                }
-                
-                let activationStartTime = Date()
-                try audioSession.setActive(true)
-                DebugLogger.log("Audio session setActive(true) called for recording. Time taken: \(Date().timeIntervalSince(activationStartTime) * 1000) ms.")
-
-                // ... (rest of AVAudioRecorder setup and start as in your last version) ...
-                // ... (including progressUpdateTask) ...
-                audioRecorder = try AVAudioRecorder(url: newRecordingUrl, settings: settings)
-                guard let strongAudioRecorder = audioRecorder else {
-                     DebugLogger.log("Failed to initialize AVAudioRecorder after session activation.")
-                     Task { try? audioSession.setActive(false, options: .notifyOthersOnDeactivation) }
-                     return nil
-                }
-                strongAudioRecorder.isMeteringEnabled = true
-
-                if strongAudioRecorder.prepareToRecord() {
-                    if strongAudioRecorder.record() {
-                        DebugLogger.log("Recording started successfully at URL: \(newRecordingUrl.path).")
-                        durationProgressHandler(0.0, [])
-
-                        progressUpdateTask?.cancel()
-                        progressUpdateTask = Task { [weak self] in
-                            var lastTickTime = Date()
-                            while true {
-                                guard let self = await self else {
-                                    DebugLogger.log("Progress update task: self is nil, terminating.")
-                                    break
-                                }
-                                if Task.isCancelled {
-                                    DebugLogger.log("Progress update task: cancelled, terminating.")
-                                    break
-                                }
-                                // Check both actor's recording flag and the AVAudioRecorder's state
-                                guard await self.isRecording, let internalRec = await self.audioRecorder, internalRec.isRecording else {
-                                    DebugLogger.log("Progress update task: No longer recording (isRecording: \(await self.isRecording), internalRec exists: \(await self.audioRecorder != nil), internalRec.isRecording: \(await self.audioRecorder?.isRecording ?? false)), terminating.")
-                                    break
-                                }
-                                await self.onTimerTick(durationProgressHandler)
-                                do {
-                                    let nextFireTime = lastTickTime.addingTimeInterval(0.1) // Target 0.1s interval
-                                    try await Task.sleep(until: .now + .nanoseconds(UInt64(max(0, nextFireTime.timeIntervalSinceNow * 1_000_000_000))), clock: .continuous)
-                                    lastTickTime = nextFireTime // Can also use Date() for more drift-resistant but potentially less smooth UI
-                                } catch {
-                                    DebugLogger.log("Progress update task: sleep interrupted (likely cancellation), terminating. Error: \(error)")
-                                    break
-                                }
-                            }
-                            DebugLogger.log("Progress update task loop finished.")
-                        } // Same as before
-                        return newRecordingUrl
-                    } else { // record() failed
-                        DebugLogger.log("audioRecorder.record() returned false.")
-                        Task { try? audioSession.setActive(false, options: .notifyOthersOnDeactivation) }
-                        self.audioRecorder = nil; self.currentRecordingURL = nil;
-                    }
-                } else { // prepareToRecord() failed
-                    DebugLogger.log("audioRecorder.prepareToRecord() returned false.")
-                    Task { try? audioSession.setActive(false, options: .notifyOthersOnDeactivation) }
-                    self.audioRecorder = nil; self.currentRecordingURL = nil;
-                }
-
-            } catch {
-                DebugLogger.log("Error during recording setup/start: \(error.localizedDescription)")
-                Task { try? audioSession.setActive(false, options: .notifyOthersOnDeactivation) }
-                audioRecorder = nil; self.currentRecordingURL = nil;
-            }
-            
-            stopRecordingCleanupInternals()
             return nil
-        }
-
-    private func onTimerTick(_ durationProgressHandler: @escaping ProgressHandler) {
-        guard let recorder = audioRecorder, recorder.isRecording else {
-            // DebugLogger.log("onTimerTick: Recorder not valid or not recording.") // Can be too verbose
-            return
-        }
-        recorder.updateMeters()
-        currentDuration = recorder.currentTime
-        let power = recorder.averagePower(forChannel: 0)
-        if power.isFinite && !power.isNaN && power >= -160.0 {
-            let normalizedPower = max(0, (power + 60) / 60)
-            currentWaveformSamples.append(CGFloat(normalizedPower))
         } else {
-            currentWaveformSamples.append(0.02)
+            return startRecordingInternal(durationProgressHandler)
         }
-        // Cap the number of samples
-        if currentWaveformSamples.count > maxWaveformSamples {
-            currentWaveformSamples.removeFirst(currentWaveformSamples.count - maxWaveformSamples)
-        }
-        DebugLogger.log("onTimerTick: Calling durationProgressHandler with duration \(currentDuration), samples count \(currentWaveformSamples.count)")
-        durationProgressHandler(currentDuration, currentWaveformSamples)
     }
     
+    private func startRecordingInternal(_ durationProgressHandler: @escaping ProgressHandler) -> URL? {
+        let settings: [String : Any] = [
+            AVFormatIDKey: Int(recorderSettings.audioFormatID),
+            AVSampleRateKey: recorderSettings.sampleRate,
+            AVNumberOfChannelsKey: recorderSettings.numberOfChannels,
+            AVEncoderBitRateKey: recorderSettings.encoderBitRateKey,
+            AVLinearPCMBitDepthKey: recorderSettings.linearPCMBitDepth,
+            AVLinearPCMIsFloatKey: recorderSettings.linearPCMIsFloatKey,
+            AVLinearPCMIsBigEndianKey: recorderSettings.linearPCMIsBigEndianKey,
+            AVLinearPCMIsNonInterleaved: recorderSettings.linearPCMIsNonInterleaved,
+            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
+        ]
+
+        soundSamples = []
+        guard let fileExt = fileExtension(for: recorderSettings.audioFormatID) else{
+            return nil
+        }
+        let recordingUrl = FileManager.tempDirPath.appendingPathComponent(UUID().uuidString + fileExt)
+        self.currentRecordingURL = recordingUrl
+        do {
+            try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothA2DP, .allowAirPlay])
+            try audioSession.setActive(true)
+            let localAudioRecorder = try AVAudioRecorder(url: recordingUrl, settings: settings)
+            localAudioRecorder.isMeteringEnabled = true
+            localAudioRecorder.prepareToRecord()
+            localAudioRecorder.record()
+
+            self.audioRecorder = localAudioRecorder;
+            durationProgressHandler(0.0, [])
+            
+            audioTimer?.cancel()
+            audioTimer = Task { [weak self] in
+                var lastTickTime = Date()
+                while true {
+                    guard let mine = await self else {
+                        DebugLogger.log("Progress update task: self is nil, terminating.")
+                        break
+                    }
+                    if Task.isCancelled {
+                        DebugLogger.log("Progress update task: cancelled, terminating.")
+                        break
+                    }
+                    // Check both actor's recording flag and the AVAudioRecorder's state
+                    guard await mine.isRecording, let internalRec = await mine.audioRecorder, internalRec.isRecording else {
+                        DebugLogger.log("Progress update task: No longer recording (isRecording: \(await mine.isRecording), internalRec exists: \(await mine.audioRecorder != nil), internalRec.isRecording: \(await mine.audioRecorder?.isRecording ?? false)), terminating.")
+                        continue
+                    }
+                    await mine.onTimer(durationProgressHandler)
+                    do {
+                        let nextFireTime = lastTickTime.addingTimeInterval(0.1) // Target 0.1s interval
+                        try await Task.sleep(until: .now + .nanoseconds(UInt64(max(0, nextFireTime.timeIntervalSinceNow * 1_000_000_000))), clock: .continuous)
+                        lastTickTime = nextFireTime // Can also use Date() for more drift-resistant but potentially less smooth UI
+                    } catch {
+                        DebugLogger.log("Progress update task: sleep interrupted (likely cancellation), terminating. Error: \(error)")
+                        break
+                    }
+                }
+                DebugLogger.log("Progress update task loop finished.")
+            } // Same as before
+            
+            return recordingUrl
+        } catch {
+            stopRecording()
+            return nil
+        }
+    }
+
+    func onTimer(_ durationProgressHandler: @escaping ProgressHandler) {
+        audioRecorder?.updateMeters()
+        currentDuration = audioRecorder!.currentTime
+        DebugLogger.log("onTimer: Duration=\(currentDuration), Samples=\(soundSamples.count)")
+        if let power = audioRecorder?.averagePower(forChannel: 0) {
+            // power from 0 db (max) to -60 db (roughly min)
+            let adjustedPower = 1 - (max(power, -60) / 60 * -1)
+            soundSamples.append(CGFloat(adjustedPower))
+        }
+        if let time = audioRecorder?.currentTime {
+            durationProgressHandler(time, soundSamples)
+        }
+    }
+
     func stopRecording() -> (duration: Double, samples: [CGFloat], url: URL?) {
         DebugLogger.log("stopRecording called. Current recorder state: \(audioRecorder != nil), isRecording: \(self.isRecording)")
         var finalDuration = self.currentDuration
-        var finalSamples = self.currentWaveformSamples
+        var finalSamples = self.soundSamples
         let urlForThisRecording = self.currentRecordingURL
-
-        if let recorder = audioRecorder {
-            if recorder.isRecording {
-                recorder.updateMeters()
-                finalDuration = recorder.currentTime
-                let power = recorder.averagePower(forChannel: 0)
-                if power.isFinite && !power.isNaN && power >= -160.0 {
-                    let normalizedPower = max(0, (power + 60) / 60)
-                    finalSamples.append(CGFloat(normalizedPower))
-                } else {
-                    finalSamples.append(0.02)
-                }
-               
-                if finalSamples.count > maxWaveformSamples {
-                    finalSamples.removeFirst(finalSamples.count - maxWaveformSamples)
-                }
-                recorder.stop()
-                DebugLogger.log("Recording hardware stopped. Duration at stop: \(finalDuration). Samples collected: \(finalSamples.count)")
-            } else {
-                finalDuration = recorder.currentTime
-                DebugLogger.log("stopRecording: recorder was not actively recording. Duration from recorder: \(finalDuration). Using currentDuration if greater: \(self.currentDuration)")
-                if finalDuration < 0.01 && self.currentDuration > 0.01 {
-                    finalDuration = self.currentDuration
-                    finalSamples = self.currentWaveformSamples
-                }
-            }
-        } else {
-            DebugLogger.log("stopRecording: audioRecorder was nil. Using current properties.")
-        }
         
-        stopRecordingCleanupInternals()
-
+        audioRecorder?.stop()
+        audioRecorder = nil
+        audioTimer?.cancel()
+        audioTimer = nil
+        
         let result = (duration: finalDuration, samples: finalSamples, url: urlForThisRecording)
-        
+                
         self.currentDuration = 0
-        self.currentWaveformSamples = []
+        self.soundSamples = []
         // self.currentRecordingURL = nil; // URL is part of result
         
         DebugLogger.log("stopRecording returning: Duration=\(result.duration), Samples=\(result.samples.count), URL=\(result.url?.lastPathComponent ?? "nil")")
         return result
     }
 
-    private func stopRecordingCleanupInternals() {
-        progressUpdateTask?.cancel()
-        progressUpdateTask = nil
-
-        if audioRecorder != nil {
-            if audioRecorder!.isRecording {
-                DebugLogger.log("Cleanup: audioRecorder was still marked as recording, stopping it now.")
-                audioRecorder!.stop()
-            }
-            audioRecorder = nil
-        }
-        DebugLogger.log("Internal cleanup: progress task cancelled/nil, recorder instance nilled.")
-        
-        // Strategy: Leave session active after recording stops to reduce latency for immediate playback or next recording.
-        // If explicit deactivation is desired here, it would be:
-        // Task {
-        //     do {
-        //         try self.audioSession.setActive(false, options: .notifyOthersOnDeactivation)
-        //         DebugLogger.log("Audio session deactivated in stopRecordingCleanupInternals.")
-        //     } catch {
-        //         DebugLogger.log("Error deactivating audio session in stopRecordingCleanupInternals: \(error)")
-        //     }
-        // }
-        DebugLogger.log("Audio session intentionally NOT deactivated in Recorder.stopRecordingCleanupInternals.")
-    }
-    
     private func fileExtension(for formatID: AudioFormatID) -> String? {
         switch formatID {
-        case kAudioFormatMPEG4AAC: return ".aac"
-        case kAudioFormatLinearPCM: return ".wav"
+        case kAudioFormatMPEG4AAC:
+            return ".aac"
+        case kAudioFormatLinearPCM:
+            return ".wav"
+        case kAudioFormatMPEGLayer3:
+            return ".mp3"
+        case kAudioFormatAppleLossless:
+            return ".m4a"
+        case kAudioFormatOpus:
+            return ".opus"
+        case kAudioFormatAC3:
+            return ".ac3"
+        case kAudioFormatFLAC:
+            return ".flac"
+        case kAudioFormatAMR:
+            return ".amr"
+        case kAudioFormatMIDIStream:
+            return ".midi"
+        case kAudioFormatULaw:
+            return ".ulaw"
+        case kAudioFormatALaw:
+            return ".alaw"
+        case kAudioFormatAMR_WB:
+            return ".awb"
+        case kAudioFormatEnhancedAC3:
+            return ".eac3"
+        case kAudioFormatiLBC:
+            return ".ilbc"
         default:
-            DebugLogger.log("Unknown audio format ID: \(formatID), defaulting to .audio")
-            return ".audio"
+            return nil
         }
     }
 }
 
-// RecorderSettings and AVAudioSession extension remain the same
-// MARK: - Recorder Settings Struct (Keep as is)
-public struct RecorderSettings: Codable, Hashable, Sendable {
+public struct RecorderSettings : Codable,Hashable {
     var audioFormatID: AudioFormatID
     var sampleRate: CGFloat
     var numberOfChannels: Int
     var encoderBitRateKey: Int
+    // pcm
     var linearPCMBitDepth: Int
     var linearPCMIsFloatKey: Bool
     var linearPCMIsBigEndianKey: Bool
@@ -298,7 +220,6 @@ public struct RecorderSettings: Codable, Hashable, Sendable {
     }
 }
 
-// MARK: - AVAudioSession Extension (Keep as is)
 extension AVAudioSession {
     func requestRecordPermission() async -> Bool {
         await withCheckedContinuation { continuation in

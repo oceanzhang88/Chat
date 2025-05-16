@@ -15,7 +15,7 @@ struct WeChatInputView: View {
     @GestureState private var isLongPressSustained: Bool = false
     // No need for @State showRecordingOverlay, viewModel.isRecordingAudioForOverlay handles it
 
-    private let cancelDragThresholdY: CGFloat = -80
+//    private let cancelDragThresholdY: CGFloat = -80
 
     @Environment(\.chatTheme) private var theme
 
