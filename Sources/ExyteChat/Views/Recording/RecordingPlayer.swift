@@ -52,22 +52,22 @@ final actor RecordingPlayer: ObservableObject {
     private var playWhenReady = false
 
     init() {
-        Logger.log("RecordingPlayer init")
+        DebugLogger.log("RecordingPlayer init")
         // Defer session category setup until actual play attempt
     }
 
     func togglePlay(_ recording: Recording) async {
-        Logger.log("togglePlay called for URL: \(recording.url?.lastPathComponent ?? "nil"). Current player recording URL: \(self.recording?.url?.lastPathComponent ?? "nil")")
+        DebugLogger.log("togglePlay called for URL: \(recording.url?.lastPathComponent ?? "nil"). Current player recording URL: \(self.recording?.url?.lastPathComponent ?? "nil")")
         if self.recording?.url != recording.url || self.player == nil || self.player?.currentItem == nil { // Added check for currentItem
-            Logger.log("togglePlay: New recording, player nil, or no current item. Setting up.")
+            DebugLogger.log("togglePlay: New recording, player nil, or no current item. Setting up.")
             await self.setupPlayer(for: recording)
             self.playWhenReady = true
         } else {
             if self.internalPlaying {
-                Logger.log("togglePlay: Pausing existing.")
+                DebugLogger.log("togglePlay: Pausing existing.")
                 await self.pause() // pause is now async due to potential session deactivation
             } else {
-                Logger.log("togglePlay: Playing existing.")
+                DebugLogger.log("togglePlay: Playing existing.")
                 self.playWhenReady = true
                 await self.play()
             }
@@ -75,7 +75,7 @@ final actor RecordingPlayer: ObservableObject {
     }
     
     func play(_ recording: Recording) async {
-        Logger.log("Explicit play called for URL: \(recording.url?.lastPathComponent ?? "nil")")
+        DebugLogger.log("Explicit play called for URL: \(recording.url?.lastPathComponent ?? "nil")")
         if self.recording?.url != recording.url || self.player == nil || self.player?.currentItem == nil {
             await self.setupPlayer(for: recording)
         }
@@ -84,7 +84,7 @@ final actor RecordingPlayer: ObservableObject {
     }
 
     func pause() async { // Make async to match potential session changes
-        Logger.log("Pause called.")
+        DebugLogger.log("Pause called.")
         player?.pause()
         internalPlaying = false
         playWhenReady = false
@@ -93,43 +93,43 @@ final actor RecordingPlayer: ObservableObject {
         // Task {
         //     do {
         //         try self.audioSession.setActive(false, options: .notifyOthersOnDeactivation)
-        //         Logger.log("Audio session deactivated on pause.")
-        //     } catch { Logger.log("Error deactivating session on pause: \(error)") }
+        //         DebugLogger.log("Audio session deactivated on pause.")
+        //     } catch { DebugLogger.log("Error deactivating session on pause: \(error)") }
         // }
-        Logger.log("Audio session intentionally NOT deactivated on RecordingPlayer.pause.")
+        DebugLogger.log("Audio session intentionally NOT deactivated on RecordingPlayer.pause.")
     }
 
     private func play() async {
         guard let currentItem = player?.currentItem else {
-            Logger.log("play() called but no current item or player.")
+            DebugLogger.log("play() called but no current item or player.")
             playWhenReady = false
             return
         }
-        Logger.log("play() called. Item status: \(currentItem.status.rawValue). playWhenReady: \(playWhenReady)")
+        DebugLogger.log("play() called. Item status: \(currentItem.status.rawValue). playWhenReady: \(playWhenReady)")
 
         if currentItem.status == .readyToPlay {
-            Logger.log("play(): Item is ready. Attempting to configure/activate session and play.")
+            DebugLogger.log("play(): Item is ready. Attempting to configure/activate session and play.")
             do {
                 // Explicitly set category to .playback and activate
                 if audioSession.category != .playback {
-                    Logger.log("play(): Current session category is \(audioSession.category.rawValue), attempting to set to .playback.")
+                    DebugLogger.log("play(): Current session category is \(audioSession.category.rawValue), attempting to set to .playback.")
                     // Deactivate if active in a different category before changing.
                     // This is crucial for clean transitions.
                     if audioSession.isInputAvailable { // Or another check if it might be active
                         do {
                             try audioSession.setActive(false, options: .notifyOthersOnDeactivation)
-                            Logger.log("Audio session deactivated to change category for playback.")
+                            DebugLogger.log("Audio session deactivated to change category for playback.")
                         } catch {
-                             Logger.log("Failed to deactivate session before category change for playback: \(error). Proceeding.")
+                             DebugLogger.log("Failed to deactivate session before category change for playback: \(error). Proceeding.")
                         }
                     }
                     try audioSession.setCategory(.playback, mode: .default, options: [.defaultToSpeaker]) // Add relevant options
-                    Logger.log("Audio session category set to .playback.")
+                    DebugLogger.log("Audio session category set to .playback.")
                 }
                 
                 let activationStartTime = Date()
                 try audioSession.setActive(true)
-                Logger.log("play(): Audio session setActive(true) for playback. Time taken: \(Date().timeIntervalSince(activationStartTime) * 1000) ms.")
+                DebugLogger.log("play(): Audio session setActive(true) for playback. Time taken: \(Date().timeIntervalSince(activationStartTime) * 1000) ms.")
                 
                 player?.play()
                 internalPlaying = true
@@ -137,7 +137,7 @@ final actor RecordingPlayer: ObservableObject {
                 
                 NotificationCenter.default.post(name: .chatAudioIsPlaying, object: self)
             } catch {
-                Logger.log("play(): Failed to set category or activate audio session for playback: \(error)")
+                DebugLogger.log("play(): Failed to set category or activate audio session for playback: \(error)")
                 internalPlaying = false
                 playWhenReady = false
             }
@@ -150,14 +150,14 @@ final actor RecordingPlayer: ObservableObject {
     
     private func setupPlayer(for recording: Recording) async {
         guard let url = recording.url else {
-            Logger.log("setupPlayer: Recording URL is nil.")
+            DebugLogger.log("setupPlayer: Recording URL is nil.")
             return
         }
-        Logger.log("setupPlayer: Setting up for URL: \(url.lastPathComponent)")
+        DebugLogger.log("setupPlayer: Setting up for URL: \(url.lastPathComponent)")
 
         // If it's the same recording, don't reset everything, just ensure player is ready
         if self.recording?.url == url && player != nil && player?.currentItem?.asset is AVURLAsset && (player?.currentItem?.asset as! AVURLAsset).url == url {
-            Logger.log("setupPlayer: Same recording URL and player exists. Ensuring it's ready if playWhenReady is set.")
+            DebugLogger.log("setupPlayer: Same recording URL and player exists. Ensuring it's ready if playWhenReady is set.")
             if playWhenReady { // If an explicit play was intended for this already setup item
                 await self.play() // play() will check .readyToPlay status
             }
@@ -177,16 +177,16 @@ final actor RecordingPlayer: ObservableObject {
         itemStatusObserver = nil
 
         let playerItem = AVPlayerItem(url: url)
-        Logger.log("setupPlayer: New AVPlayerItem created for \(url.lastPathComponent)")
+        DebugLogger.log("setupPlayer: New AVPlayerItem created for \(url.lastPathComponent)")
 
         itemStatusObserver = playerItem.observe(\.status, options: [.new, .initial]) { [weak self] item, change in
             Task {
                 guard let strongSelf = await self else { return }
-                Logger.log("KVO: PlayerItem status changed to \(item.status.rawValue) for \(item.asset is AVURLAsset ? (item.asset as! AVURLAsset).url.lastPathComponent : "unknown asset"). playWhenReady: \(await await strongSelf.playWhenReady)")
+                DebugLogger.log("KVO: PlayerItem status changed to \(item.status.rawValue) for \(item.asset is AVURLAsset ? (item.asset as! AVURLAsset).url.lastPathComponent : "unknown asset"). playWhenReady: \(await await strongSelf.playWhenReady)")
                 
                 switch item.status {
                 case .readyToPlay:
-                    Logger.log("KVO: Item is readyToPlay.")
+                    DebugLogger.log("KVO: Item is readyToPlay.")
                     let itemDurationSeconds = item.duration.seconds
                     await MainActor.run {
                         strongSelf.duration = itemDurationSeconds
@@ -195,16 +195,16 @@ final actor RecordingPlayer: ObservableObject {
                         }
                     }
                     if await strongSelf.playWhenReady {
-                        Logger.log("KVO: playWhenReady is true, calling play().")
+                        DebugLogger.log("KVO: playWhenReady is true, calling play().")
                         await strongSelf.play()
                     }
                 case .failed:
                     let errorDescription = item.error?.localizedDescription ?? "Unknown error"
-                    Logger.log("KVO: PlayerItem status changed to .failed. Error: \(errorDescription)")
+                    DebugLogger.log("KVO: PlayerItem status changed to .failed. Error: \(errorDescription)")
                     strongSelf.internalPlaying = false
                     strongSelf.playWhenReady = false
                 default: // .unknown
-                    Logger.log("KVO: PlayerItem status is .unknown.")
+                    DebugLogger.log("KVO: PlayerItem status is .unknown.")
                     break
                 }
             }
@@ -212,10 +212,10 @@ final actor RecordingPlayer: ObservableObject {
 
         if player == nil {
             player = AVPlayer() // Create player only if it doesn't exist
-            Logger.log("New AVPlayer instance created globally.")
+            DebugLogger.log("New AVPlayer instance created globally.")
         }
         player?.replaceCurrentItem(with: playerItem)
-        Logger.log("Player item replaced with new URL: \(url.lastPathComponent)")
+        DebugLogger.log("Player item replaced with new URL: \(url.lastPathComponent)")
 
         // Add other observers
         let actorInstance = self
@@ -258,44 +258,44 @@ final actor RecordingPlayer: ObservableObject {
     }
 
     private func handlePlayerDidFinishPlaying(note: NSNotification) {
-        Logger.log("playerDidFinishPlaying.")
+        DebugLogger.log("playerDidFinishPlaying.")
         self.internalPlaying = false
         self.player?.seek(to: .zero)
         Task { @MainActor in self.didPlayTillEnd.send() }
-        Logger.log("Audio session intentionally NOT deactivated after playback finished.")
+        DebugLogger.log("Audio session intentionally NOT deactivated after playback finished.")
     }
 
     private func handleOtherAudioPlaying(notification: NSNotification) {
         if let sender = notification.object as? RecordingPlayer, sender !== self {
-             Logger.log("Another player started. Pausing self.")
+             DebugLogger.log("Another player started. Pausing self.")
              Task { await self.pause() } // Call async version
         }
     }
 
     func seek(with recording: Recording, to progress: Double) async {
         guard let player = self.player else {
-            Logger.log("Seek attempted but player is nil.")
+            DebugLogger.log("Seek attempted but player is nil.")
             return
         }
         let goalTimeSeconds = recording.duration * progress
         let goalTime = CMTime(seconds: goalTimeSeconds, preferredTimescale: 600)
-        Logger.log("seek(with:to: \(progress)), goalTime: \(goalTimeSeconds)")
+        DebugLogger.log("seek(with:to: \(progress)), goalTime: \(goalTimeSeconds)")
 
         if self.recording?.url != recording.url || player.currentItem?.asset !== (player.currentItem?.asset as? AVURLAsset) {
-            Logger.log("Seek: Recording item changed or player item mismatch. Setting up player.")
+            DebugLogger.log("Seek: Recording item changed or player item mismatch. Setting up player.")
             await self.setupPlayer(for: recording)
         }
         
         if player.currentItem?.status == .readyToPlay {
             await player.seek(to: goalTime, toleranceBefore: .zero, toleranceAfter: .zero)
-            Logger.log("Seek completed.")
+            DebugLogger.log("Seek completed.")
             if internalPlaying {
                 player.play() // AVPlayer's play is synchronous
-                Logger.log("Resumed playback after seek.")
+                DebugLogger.log("Resumed playback after seek.")
             }
             await self.updateProgressProperties(itemDuration: player.currentItem!.duration, currentTime: goalTime)
         } else {
-            Logger.log("Seek: Player item not ready. playWhenReady: \(playWhenReady). Current status: \(player.currentItem?.status.rawValue ?? -99)")
+            DebugLogger.log("Seek: Player item not ready. playWhenReady: \(playWhenReady). Current status: \(player.currentItem?.status.rawValue ?? -99)")
             // If we want to play after seek, set the flag. KVO will pick it up.
             // If it was already playing, we intend to keep it playing.
             if internalPlaying { self.playWhenReady = true }
@@ -309,7 +309,7 @@ final actor RecordingPlayer: ObservableObject {
     }
     
     func reset() async { // Make async due to pause
-        Logger.log("Resetting player.")
+        DebugLogger.log("Resetting player.")
         await pause() // pause is now async
 
         player?.replaceCurrentItem(with: nil)
@@ -323,6 +323,6 @@ final actor RecordingPlayer: ObservableObject {
         NotificationCenter.default.removeObserver(self)
 
         self.recording = nil
-        Logger.log("Audio session intentionally NOT deactivated on player reset.")
+        DebugLogger.log("Audio session intentionally NOT deactivated on player reset.")
     }
 }

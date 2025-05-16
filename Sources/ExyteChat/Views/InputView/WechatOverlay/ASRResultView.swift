@@ -51,7 +51,7 @@ struct ASRResultView: View {
             .shadow(color: Color.black.opacity(0.15), radius: 4, y: 2)
             // No horizontal padding here, width is controlled by .frame(width: targetWidth)
             .onTapGesture {
-                Logger.log("ASR Bubble tapped. Current text: \(inputViewModel.transcribedText)")
+                DebugLogger.log("ASR Bubble tapped. Current text: \(inputViewModel.transcribedText)")
                 if inputViewModel.asrErrorMessage == nil && !inputViewModel.transcribedText.isEmpty {
                     inputViewModel.startEditingASRText()
                 }

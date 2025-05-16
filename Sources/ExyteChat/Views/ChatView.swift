@@ -265,7 +265,7 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                     // Ensure this update happens on the main thread if it might be triggered from a background one
                     DispatchQueue.main.async {
                         if self.measuredVoiceOverlayBottomHeight != height {
-                            Logger.log("Received voice overlay bottom height: \(height)")
+                            DebugLogger.log("Received voice overlay bottom height: \(height)")
                             self.measuredVoiceOverlayBottomHeight = height
                         }
                     }
@@ -274,12 +274,12 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
         }
         .onPreferenceChange(CancelRectPreferenceKey.self) { newValue in
             // Log what's coming in
-            Logger.log("onPreferenceChange(CancelRect): NewRect=\(newValue)")
+            DebugLogger.log("onPreferenceChange(CancelRect): NewRect=\(newValue)")
 
         }
         .onPreferenceChange(ConvertToTextRectPreferenceKey.self) { value in
 //            self.convertToTextRectGlobal = value
-            Logger.log("onPreferenceChange(ConvertToTextRectGlobal): NewRect=\(value)")
+            DebugLogger.log("onPreferenceChange(ConvertToTextRectGlobal): NewRect=\(value)")
         }
     }
     

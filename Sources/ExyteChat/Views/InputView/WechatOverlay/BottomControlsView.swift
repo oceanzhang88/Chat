@@ -101,8 +101,8 @@ struct BottomControlsView: View {
                             let increasedRect = calculateIncreasedDragArea(frameInGlobal: frameInGlobal, type: "xmark")
 
                             if inputViewModel.cancelRectGlobal != increasedRect {
-                                Logger.log("BottomControlsView (Cancel Button): GeometryReader original frame(in: .global) = \(frameInGlobal)")
-                                Logger.log("BottomControlsView (Cancel Button): GeometryReader increasedRect = \(increasedRect)")
+                                DebugLogger.log("BottomControlsView (Cancel Button): GeometryReader original frame(in: .global) = \(frameInGlobal)")
+                                DebugLogger.log("BottomControlsView (Cancel Button): GeometryReader increasedRect = \(increasedRect)")
                                 DispatchQueue.main.async {
                                     inputViewModel.cancelRectGlobal = increasedRect
                                 }
@@ -125,8 +125,8 @@ struct BottomControlsView: View {
                             let increasedRect = calculateIncreasedDragArea(frameInGlobal:frameInGlobal, type: localization.convertToTextButton)
 
                             if inputViewModel.convertToTextRectGlobal != increasedRect {
-                                Logger.log("BottomControlsView (To Text Button): GeometryReader original frame(in: .global) = \(frameInGlobal)")
-                                Logger.log("BottomControlsView (To Text Button): GeometryReader increasedRect = \(increasedRect)")
+                                DebugLogger.log("BottomControlsView (To Text Button): GeometryReader original frame(in: .global) = \(frameInGlobal)")
+                                DebugLogger.log("BottomControlsView (To Text Button): GeometryReader increasedRect = \(increasedRect)")
                                 DispatchQueue.main.async {
                                     inputViewModel.convertToTextRectGlobal = increasedRect
                                 }

@@ -34,7 +34,7 @@ final class InputViewModel: ObservableObject {
     @Published var state: InputViewState = .empty {
         didSet {
             if oldValue != state {
-                Logger.log("InputViewState changed from \(oldValue) to \(state)")
+                DebugLogger.log("InputViewState changed from \(oldValue) to \(state)")
             }
         }
     }
@@ -42,7 +42,7 @@ final class InputViewModel: ObservableObject {
     @Published var weChatRecordingPhase: WeChatRecordingPhase = .idle {
         didSet {
             if oldValue != weChatRecordingPhase {
-                Logger.log("WeChatRecordingPhase changed from \(oldValue) to \(weChatRecordingPhase)")
+                DebugLogger.log("WeChatRecordingPhase changed from \(oldValue) to \(weChatRecordingPhase)")
             }
             // This property controls the visibility of WeChatRecordingOverlayView
             let shouldShowOverlay = (
@@ -59,21 +59,21 @@ final class InputViewModel: ObservableObject {
             let newShouldHideMainInputBar = weChatRecordingPhase == .asrCompleteWithText("")
             if self.shouldHideMainInputBar != newShouldHideMainInputBar {
                 self.shouldHideMainInputBar = newShouldHideMainInputBar
-                Logger.log("shouldHideMainInputBar changed to \(self.shouldHideMainInputBar)")
+                DebugLogger.log("shouldHideMainInputBar changed to \(self.shouldHideMainInputBar)")
             }
         }
     }
     @Published var isRecordingAudioForOverlay: Bool = false {
         didSet {
             if oldValue != isRecordingAudioForOverlay {
-                Logger.log("isRecordingAudioForOverlay changed from \(oldValue) to \(isRecordingAudioForOverlay)")
+                DebugLogger.log("isRecordingAudioForOverlay changed from \(oldValue) to \(isRecordingAudioForOverlay)")
             }
         }
     }
     @Published var isDraggingInCancelZoneOverlay: Bool = false {
         didSet {
             if oldValue != isDraggingInCancelZoneOverlay {
-                Logger.log("isDraggingInCancelZoneOverlay changed from \(oldValue) to \(isDraggingInCancelZoneOverlay)")
+                DebugLogger.log("isDraggingInCancelZoneOverlay changed from \(oldValue) to \(isDraggingInCancelZoneOverlay)")
             }
         }
     }
@@ -81,19 +81,19 @@ final class InputViewModel: ObservableObject {
     @Published var isDraggingToConvertToTextZoneOverlay: Bool = false {
         didSet {
             if oldValue != isDraggingToConvertToTextZoneOverlay {
-                 Logger.log("isDraggingToConvertToTextZoneOverlay changed to \(isDraggingToConvertToTextZoneOverlay)")
+                 DebugLogger.log("isDraggingToConvertToTextZoneOverlay changed to \(isDraggingToConvertToTextZoneOverlay)")
             }
         }
     }
     @Published var cancelRectGlobal: CGRect = .zero {
         didSet {
             // Optional: log when it changes if still debugging
-            Logger.log("InputViewModel: cancelRectGlobal updated to \(cancelRectGlobal)")
+            DebugLogger.log("InputViewModel: cancelRectGlobal updated to \(cancelRectGlobal)")
         }
     }
     @Published var convertToTextRectGlobal: CGRect = .zero {
         didSet {
-            Logger.log("InputViewModel: convertToTextRectGlobal updated to \(convertToTextRectGlobal)")
+            DebugLogger.log("InputViewModel: convertToTextRectGlobal updated to \(convertToTextRectGlobal)")
         }
     }
 
@@ -112,14 +112,14 @@ final class InputViewModel: ObservableObject {
     }
 
     func onStart() {
-        Logger.log("onStart called. Current state: \(state)")
+        DebugLogger.log("onStart called. Current state: \(state)")
         subscribeValidation()
         subscribePicker()
         subscribeGiphyPicker()
     }
 
     func onStop() {
-        Logger.log("onStop called.")
+        DebugLogger.log("onStop called.")
         subscriptions.removeAll()
         if isRecordingAudioForOverlay { isRecordingAudioForOverlay = false }
         if isDraggingInCancelZoneOverlay { isDraggingInCancelZoneOverlay = false }
@@ -130,7 +130,7 @@ final class InputViewModel: ObservableObject {
     func startEditingASRText() {
         // Ensure we are in a state where editing makes sense
         guard case .asrCompleteWithText = self.weChatRecordingPhase, self.asrErrorMessage == nil else {
-            Logger.log("startEditingASRText: Not in a valid state to edit or ASR had an error.")
+            DebugLogger.log("startEditingASRText: Not in a valid state to edit or ASR had an error.")
             return
         }
 
@@ -140,7 +140,7 @@ final class InputViewModel: ObservableObject {
                                         // Let's discard on send of text for now, to allow user to still send voice if they cancel edit.
         self.weChatRecordingPhase = .idle // This will hide the WeChatRecordingOverlayView
 
-        Logger.log("startEditingASRText: Switched to editing. Text: \(self.text)")
+        DebugLogger.log("startEditingASRText: Switched to editing. Text: \(self.text)")
         // Notify WeChatInputView to switch to text mode and focus
 //        NotificationCenter.default.post(name: .switchToTextInputAndFocus, object: self.inputFieldId)
     }
@@ -148,7 +148,7 @@ final class InputViewModel: ObservableObject {
     func reset() {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
-            Logger.log("reset called. Current state before reset: \(self.state)")
+            DebugLogger.log("reset called. Current state before reset: \(self.state)")
             self.isEditingASRText = false // Add this
             self.showPicker = false
             self.showGiphyPicker = false
@@ -162,16 +162,16 @@ final class InputViewModel: ObservableObject {
             self.isDraggingToConvertToTextZoneOverlay = false
             self.state = .empty
             self.subscribeValidation() // Re-subscribe if needed, or manage subscriptions more carefully
-            Logger.log("States after reset: mainState=\(self.state), weChatPhase=\(self.weChatRecordingPhase)")
+            DebugLogger.log("States after reset: mainState=\(self.state), weChatPhase=\(self.weChatRecordingPhase)")
         }
     }
 
     func send() {
-        Logger.log("send() called. Current state: \(state)")
+        DebugLogger.log("send() called. Current state: \(state)")
         Task {
             // If we were in a recording phase, ensure it's properly stopped.
             if self.weChatRecordingPhase == .recording || self.state == .isRecordingHold || self.state == .isRecordingTap {
-                Logger.log("Send called while recording was active, stopping recorder first.")
+                DebugLogger.log("Send called while recording was active, stopping recorder first.")
                 let recordingResult = await recorder.stopRecording() // Ensure recorder is stopped
                 if let url = recordingResult.url, recordingResult.duration > 0.1 {
                      self.attachments.recording = Recording(duration: recordingResult.duration, waveformSamples: recordingResult.samples, url: url)
@@ -180,7 +180,7 @@ final class InputViewModel: ObservableObject {
                      // Only clear recording if nothing else to send
                      self.attachments.recording = nil
                 }
-                Logger.log("Stopped recording via send. Duration: \(self.attachments.recording?.duration ?? 0)")
+                DebugLogger.log("Stopped recording via send. Duration: \(self.attachments.recording?.duration ?? 0)")
             }
 
             // If sending transcribed text, it should be in `self.text` by now.
@@ -189,7 +189,7 @@ final class InputViewModel: ObservableObject {
             if !self.text.isEmpty || !self.attachments.medias.isEmpty || (self.attachments.recording != nil && (self.attachments.recording?.duration ?? 0) > 0.1) || self.attachments.giphyMedia != nil {
                 sendMessage() // This internally calls reset which should set phase to .idle
             } else {
-                Logger.log("Send called, but nothing to send. Cleaning up with deleteRecord logic.")
+                DebugLogger.log("Send called, but nothing to send. Cleaning up with deleteRecord logic.")
                 // Effectively a cancel/cleanup if there's nothing valid to send
                 self.inputViewActionInternal(.deleteRecord)
             }
@@ -197,7 +197,7 @@ final class InputViewModel: ObservableObject {
     }
 
     func edit(_ closure: @escaping (String) -> Void) {
-        Logger.log("edit() called. Text to edit: \(text)")
+        DebugLogger.log("edit() called. Text to edit: \(text)")
         saveEditingClosure = closure
         state = .editing
         weChatRecordingPhase = .idle // Ensure WeChat specific interactions are reset
@@ -205,7 +205,7 @@ final class InputViewModel: ObservableObject {
 
     func inputViewAction() -> (InputViewAction) -> Void {
         { [weak self] action in
-            Logger.log("inputViewAction() received action: \(action)")
+            DebugLogger.log("inputViewAction() received action: \(action)")
             self?.inputViewActionInternal(action)
         }
     }
@@ -231,7 +231,7 @@ final class InputViewModel: ObservableObject {
             if self.isEditingASRText {
                 self.attachments.recording = nil // Discard voice if text from ASR edit is sent
                 self.isEditingASRText = false // Reset editing state
-                Logger.log("Sending edited ASR text, original voice recording discarded.")
+                DebugLogger.log("Sending edited ASR text, original voice recording discarded.")
             }
             send() // send() will handle recorder stop and state resets
 
@@ -247,7 +247,7 @@ final class InputViewModel: ObservableObject {
                         self.weChatRecordingPhase = .idle
                     }
                 } else {
-                    Logger.log("Action .recordAudioHold. Permission not yet granted. Requesting.")
+                    DebugLogger.log("Action .recordAudioHold. Permission not yet granted. Requesting.")
                     self.state = .waitingForRecordingPermission
                     self.weChatRecordingPhase = .idle
                     let granted = await recorder.requestDirectPermission()
@@ -259,10 +259,10 @@ final class InputViewModel: ObservableObject {
                 let hasPermission = await recorder.isAllowedToRecordAudio
                 if hasPermission {
                     if await recorder.isRecording { // If already recording (e.g. tap-locked), then stop.
-                        Logger.log("Action .recordAudioTap: Was recording (tap-locked), now stopping.")
+                        DebugLogger.log("Action .recordAudioTap: Was recording (tap-locked), now stopping.")
                         await self.inputViewActionInternal(.stopRecordAudio)
                     } else { // Not recording, so start tap-locked recording.
-                        Logger.log("Action .recordAudioTap: Starting tap-locked recording.")
+                        DebugLogger.log("Action .recordAudioTap: Starting tap-locked recording.")
                         await recordAudio() // Sets weChatRecordingPhase = .recording
                         if self.weChatRecordingPhase == .recording {
                             self.state = .isRecordingTap // Sync main state for tap-lock
@@ -272,7 +272,7 @@ final class InputViewModel: ObservableObject {
                         }
                     }
                 } else {
-                    Logger.log("Action .recordAudioTap. Permission not yet granted. Requesting.")
+                    DebugLogger.log("Action .recordAudioTap. Permission not yet granted. Requesting.")
                     self.state = .waitingForRecordingPermission
                     self.weChatRecordingPhase = .idle
                     let granted = await recorder.requestDirectPermission()
@@ -281,14 +281,14 @@ final class InputViewModel: ObservableObject {
             }
 
         case .recordAudioLock: // From UI, when user swipes up during hold
-             Logger.log("Action .recordAudioLock. Transitioning state to .isRecordingTap for locked mode.")
+             DebugLogger.log("Action .recordAudioLock. Transitioning state to .isRecordingTap for locked mode.")
              self.state = .isRecordingTap
              self.weChatRecordingPhase = .recording // Or a specific .recordingLocked phase if needed
                                                     // For now, .recording covers visual feedback.
 
         case .stopRecordAudio: // User explicitly stops a tap-locked recording OR gesture releases on STT zone
             Task {
-                Logger.log("Action .stopRecordAudio. Current WeChatPhase: \(self.weChatRecordingPhase)")
+                DebugLogger.log("Action .stopRecordAudio. Current WeChatPhase: \(self.weChatRecordingPhase)")
                 let recordingResult = await recorder.stopRecording()
                 if let url = recordingResult.url, recordingResult.duration > 0.1 {
                     self.attachments.recording = Recording(duration: recordingResult.duration, waveformSamples: recordingResult.samples, url: url)
@@ -308,7 +308,7 @@ final class InputViewModel: ObservableObject {
 
         case .deleteRecord:
             Task {
-                Logger.log("Action .deleteRecord.")
+                DebugLogger.log("Action .deleteRecord.")
                 unsubscribeRecordPlayer()
                 _ = await recorder.stopRecording() // Ensure recorder is stopped
                 self.attachments.recording = nil
@@ -321,7 +321,7 @@ final class InputViewModel: ObservableObject {
                 self.isDraggingToConvertToTextZoneOverlay = false
             }
         case .playRecord:
-            Logger.log("Action .playRecord.")
+            DebugLogger.log("Action .playRecord.")
             // state = .playingRecording // General state if needed, or rely on player's state
             if let recording = attachments.recording {
                 Task {
@@ -330,27 +330,27 @@ final class InputViewModel: ObservableObject {
                 }
             }
         case .pauseRecord:
-            Logger.log("Action .pauseRecord.")
+            DebugLogger.log("Action .pauseRecord.")
             // state = .pausedRecording // General state if needed
             Task {
                 await recordingPlayer?.pause()
             }
         case .saveEdit:
-            Logger.log("Action .saveEdit.")
+            DebugLogger.log("Action .saveEdit.")
             saveEditingClosure?(text)
             reset() // Resets all states including weChatRecordingPhase
         case .cancelEdit:
-            Logger.log("Action .cancelEdit.")
+            DebugLogger.log("Action .cancelEdit.")
             reset() // Resets all states
         }
     }
 
     private func recordAudio() async {
         if await recorder.isRecording {
-            Logger.log("recordAudio() called, but recorder is already recording.")
+            DebugLogger.log("recordAudio() called, but recorder is already recording.")
             return
         }
-        Logger.log("recordAudio() attempting to start new recording (permission should be granted).")
+        DebugLogger.log("recordAudio() attempting to start new recording (permission should be granted).")
 
         await MainActor.run {
             self.attachments.recording = Recording() // Initialize with empty recording
@@ -367,9 +367,9 @@ final class InputViewModel: ObservableObject {
             if let recordingUrl = url {
                 self.attachments.recording?.url = recordingUrl
                 self.weChatRecordingPhase = .recording // Set the WeChat specific phase
-                Logger.log("recordAudio() successfully started. URL: \(recordingUrl.absoluteString). Current weChatRecordingPhase: \(self.weChatRecordingPhase).")
+                DebugLogger.log("recordAudio() successfully started. URL: \(recordingUrl.absoluteString). Current weChatRecordingPhase: \(self.weChatRecordingPhase).")
             } else {
-                Logger.log("recordAudio() failed to start (url is nil). Resetting.")
+                DebugLogger.log("recordAudio() failed to start (url is nil). Resetting.")
                 self.attachments.recording = nil
                 self.state = .empty // Main state
                 self.weChatRecordingPhase = .idle // WeChat phase
@@ -380,7 +380,7 @@ final class InputViewModel: ObservableObject {
     // Placeholder for actual STT logic (Phase 3)
     func performSpeechToText() async {
         guard let recording = self.attachments.recording, let audioURL = recording.url else {
-            Logger.log("performSpeechToText: No valid recording URL.")
+            DebugLogger.log("performSpeechToText: No valid recording URL.")
             await MainActor.run {
                 self.asrErrorMessage = "No audio to transcribe." // TODO: Localize
                 self.weChatRecordingPhase = .asrCompleteWithText("") // Use empty string to signify error for button layout
@@ -388,7 +388,7 @@ final class InputViewModel: ObservableObject {
             return
         }
 
-        Logger.log("Starting STT for: \(audioURL.lastPathComponent)")
+        DebugLogger.log("Starting STT for: \(audioURL.lastPathComponent)")
         
         // ***** START OF ACTUAL STT IMPLEMENTATION (EXAMPLE WITH SFSpeechRecognizer) *****
         // This is a simplified example. You'll need more robust error handling,
@@ -402,7 +402,7 @@ final class InputViewModel: ObservableObject {
         
         let recognizer = SFSpeechRecognizer() // Uses user's current locale by default
         guard let speechRecognizer = recognizer, speechRecognizer.isAvailable else {
-            Logger.log("STT: SFSpeechRecognizer not available.")
+            DebugLogger.log("STT: SFSpeechRecognizer not available.")
             await MainActor.run {
                 self.asrErrorMessage = "Speech recognition is not available right now." // TODO: Localize
                 self.weChatRecordingPhase = .asrCompleteWithText("")
@@ -418,7 +418,7 @@ final class InputViewModel: ObservableObject {
             
             Task { @MainActor in // Ensure UI updates are on the main thread
                 if let error = error {
-                    Logger.log("STT Error: \(error.localizedDescription)")
+                    DebugLogger.log("STT Error: \(error.localizedDescription)")
                     self.asrErrorMessage = error.localizedDescription // Or a more user-friendly message
                     self.weChatRecordingPhase = .asrCompleteWithText("")
                     return
@@ -426,17 +426,17 @@ final class InputViewModel: ObservableObject {
                 
                 if let recognitionResult = result {
                     let bestTranscription = recognitionResult.bestTranscription.formattedString
-                    Logger.log("STT Success: \(bestTranscription)")
+                    DebugLogger.log("STT Success: \(bestTranscription)")
                     self.transcribedText = bestTranscription
                     self.asrErrorMessage = nil
                     self.weChatRecordingPhase = .asrCompleteWithText(bestTranscription)
 
                     if recognitionResult.isFinal {
                         // You might do final cleanup or logging here
-                        Logger.log("STT isFinal: true")
+                        DebugLogger.log("STT isFinal: true")
                     }
                 } else if error == nil { // No result and no error typically means no speech detected
-                     Logger.log("STT: No speech detected or result is empty.")
+                     DebugLogger.log("STT: No speech detected or result is empty.")
                      self.transcribedText = "" // Explicitly empty
                      self.asrErrorMessage = nil // No error, just no text
                      self.weChatRecordingPhase = .asrCompleteWithText("") // Show buttons for empty result
@@ -458,13 +458,13 @@ final class InputViewModel: ObservableObject {
                 self.transcribedText = mockText
                 self.asrErrorMessage = nil
                 self.weChatRecordingPhase = .asrCompleteWithText(mockText)
-                Logger.log("STT Success: \(mockText)")
+                DebugLogger.log("STT Success: \(mockText)")
             } else {
                 let mockError = "Speech recognition failed."
                 self.asrErrorMessage = mockError
                 // Decide if .hasRecording or .idle is better if STT fails but voice note exists
                 self.weChatRecordingPhase = .asrCompleteWithText("") // Use empty string to signify error
-                Logger.log("STT Failed: \(mockError)")
+                DebugLogger.log("STT Failed: \(mockError)")
             }
         }
         */
@@ -507,10 +507,10 @@ private extension InputViewModel {
                 recordPlayerSubscription = recordingPlayer.didPlayTillEnd
                     .sink { [weak self] in
                         guard let self = self else { return }
-                        Logger.log("Recording player didPlayTillEnd.")
+                        DebugLogger.log("Recording player didPlayTillEnd.")
                         // If it was playing as part of STT complete screen, revert to STT complete, not .hasRecording
                         if case .asrCompleteWithText(let text) = self.weChatRecordingPhase {
-                            Logger.log("Player finished, was in sttComplete. Staying in sttComplete.")
+                            DebugLogger.log("Player finished, was in sttComplete. Staying in sttComplete.")
                             // Optionally, reset player UI within sttComplete (e.g., show play button again)
                         } else if self.state != .hasRecording { // Only if not already in hasRecording (e.g. if STT flow sets it differently)
                             self.state = .hasRecording
@@ -542,7 +542,7 @@ private extension InputViewModel {
             replyMessage: attachments.replyMessage,
             createdAt: Date()
         )
-        Logger.log("sendMessage: Preparing to send DraftMessage. Text: '\(draft.text)', Recording duration: \(draft.recording?.duration ?? -1)")
+        DebugLogger.log("sendMessage: Preparing to send DraftMessage. Text: '\(draft.text)', Recording duration: \(draft.recording?.duration ?? -1)")
         didSendMessage?(draft)
 
         DispatchQueue.main.async { [weak self] in

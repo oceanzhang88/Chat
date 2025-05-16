@@ -119,7 +119,7 @@ struct WeChatRecordingOverlayView: View {
                         inputViewModel.inputViewAction()(.deleteRecord)
                     },
                     onConvertToText: {
-                        Logger.log("BottomControlsView: onConvertToText (direct tap) placeholder.")
+                        DebugLogger.log("BottomControlsView: onConvertToText (direct tap) placeholder.")
                         /* Direct tap on "En" if needed, usually drag-release */
                     },
                 )

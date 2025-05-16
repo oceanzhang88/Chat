@@ -26,30 +26,30 @@ final actor Recorder {
     }
 
     init() {
-        Logger.log("Recorder init")
+        DebugLogger.log("Recorder init")
         // Defer session category setup until it's actually needed (in startRecording)
     }
 
     func setRecorderSettings(_ recorderSettings: RecorderSettings) {
         self.recorderSettings = recorderSettings
-        Logger.log("Settings updated: \(recorderSettings)")
+        DebugLogger.log("Settings updated: \(recorderSettings)")
     }
 
     func requestDirectPermission() async -> Bool {
         if isAllowedToRecordAudio { return true }
-        Logger.log("Requesting direct audio permission.")
+        DebugLogger.log("Requesting direct audio permission.")
         return await audioSession.requestRecordPermission()
     }
 
     func startRecording(durationProgressHandler: @escaping ProgressHandler) async -> URL? {
-            Logger.log("Attempting to start recording. Current recorder state: \(audioRecorder != nil), isRecording: \(self.isRecording)")
+            DebugLogger.log("Attempting to start recording. Current recorder state: \(audioRecorder != nil), isRecording: \(self.isRecording)")
             guard isAllowedToRecordAudio else {
-                Logger.log("StartRecording called but permission not granted.")
+                DebugLogger.log("StartRecording called but permission not granted.")
                 return nil
             }
 
             if audioRecorder != nil {
-                Logger.log("Existing audioRecorder instance found. Ensuring it's stopped and cleaned up.")
+                DebugLogger.log("Existing audioRecorder instance found. Ensuring it's stopped and cleaned up.")
                 _ = stopRecording() // This nils out audioRecorder and cancels task
             }
 
@@ -67,11 +67,11 @@ final actor Recorder {
                 ]
 
             do {
-                Logger.log("Configuring audio session for recording.")
+                DebugLogger.log("Configuring audio session for recording.")
                 // Check if session is active and in a different category/mode.
                 // If so, it's often safer to deactivate before changing category.
                 if audioSession.category != .playAndRecord || audioSession.mode != .default {
-                    Logger.log("Session category/mode is NOT .playAndRecord/default (current: \(audioSession.category.rawValue)/\(audioSession.mode.rawValue)).")
+                    DebugLogger.log("Session category/mode is NOT .playAndRecord/default (current: \(audioSession.category.rawValue)/\(audioSession.mode.rawValue)).")
                     // Deactivate if it's active in another category, to allow clean category change.
                     // This check `audioSession.isOtherAudioPlaying` might not be fully reliable for session's own active state.
                     // A direct check of `AVAudioSession.sharedInstance().secondaryAudioShouldBeSilencedHint` or if the app truly believes it should be active.
@@ -81,25 +81,25 @@ final actor Recorder {
                         // unless you intend to interrupt it. But here, we are about to record, which will interrupt.
                         do {
                             try audioSession.setActive(false, options: .notifyOthersOnDeactivation)
-                            Logger.log("Audio session deactivated to change category.")
+                            DebugLogger.log("Audio session deactivated to change category.")
                         } catch {
-                            Logger.log("Failed to deactivate audio session before category change: \(error). Proceeding with setCategory.")
+                            DebugLogger.log("Failed to deactivate audio session before category change: \(error). Proceeding with setCategory.")
                             // Potentially problematic, but setCategory might still work or throw its own error.
                         }
                     }
                     try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothA2DP, .allowAirPlay])
-                    Logger.log("Audio session category set to .playAndRecord/default.")
+                    DebugLogger.log("Audio session category set to .playAndRecord/default.")
                 }
                 
                 let activationStartTime = Date()
                 try audioSession.setActive(true)
-                Logger.log("Audio session setActive(true) called for recording. Time taken: \(Date().timeIntervalSince(activationStartTime) * 1000) ms.")
+                DebugLogger.log("Audio session setActive(true) called for recording. Time taken: \(Date().timeIntervalSince(activationStartTime) * 1000) ms.")
 
                 // ... (rest of AVAudioRecorder setup and start as in your last version) ...
                 // ... (including progressUpdateTask) ...
                 audioRecorder = try AVAudioRecorder(url: newRecordingUrl, settings: settings)
                 guard let strongAudioRecorder = audioRecorder else {
-                     Logger.log("Failed to initialize AVAudioRecorder after session activation.")
+                     DebugLogger.log("Failed to initialize AVAudioRecorder after session activation.")
                      Task { try? audioSession.setActive(false, options: .notifyOthersOnDeactivation) }
                      return nil
                 }
@@ -107,7 +107,7 @@ final actor Recorder {
 
                 if strongAudioRecorder.prepareToRecord() {
                     if strongAudioRecorder.record() {
-                        Logger.log("Recording started successfully at URL: \(newRecordingUrl.path).")
+                        DebugLogger.log("Recording started successfully at URL: \(newRecordingUrl.path).")
                         durationProgressHandler(0.0, [])
 
                         progressUpdateTask?.cancel()
@@ -115,16 +115,16 @@ final actor Recorder {
                             var lastTickTime = Date()
                             while true {
                                 guard let self = await self else {
-                                    Logger.log("Progress update task: self is nil, terminating.")
+                                    DebugLogger.log("Progress update task: self is nil, terminating.")
                                     break
                                 }
                                 if Task.isCancelled {
-                                    Logger.log("Progress update task: cancelled, terminating.")
+                                    DebugLogger.log("Progress update task: cancelled, terminating.")
                                     break
                                 }
                                 // Check both actor's recording flag and the AVAudioRecorder's state
                                 guard await self.isRecording, let internalRec = await self.audioRecorder, internalRec.isRecording else {
-                                    Logger.log("Progress update task: No longer recording (isRecording: \(await self.isRecording), internalRec exists: \(await self.audioRecorder != nil), internalRec.isRecording: \(await self.audioRecorder?.isRecording ?? false)), terminating.")
+                                    DebugLogger.log("Progress update task: No longer recording (isRecording: \(await self.isRecording), internalRec exists: \(await self.audioRecorder != nil), internalRec.isRecording: \(await self.audioRecorder?.isRecording ?? false)), terminating.")
                                     break
                                 }
                                 await self.onTimerTick(durationProgressHandler)
@@ -133,26 +133,26 @@ final actor Recorder {
                                     try await Task.sleep(until: .now + .nanoseconds(UInt64(max(0, nextFireTime.timeIntervalSinceNow * 1_000_000_000))), clock: .continuous)
                                     lastTickTime = nextFireTime // Can also use Date() for more drift-resistant but potentially less smooth UI
                                 } catch {
-                                    Logger.log("Progress update task: sleep interrupted (likely cancellation), terminating. Error: \(error)")
+                                    DebugLogger.log("Progress update task: sleep interrupted (likely cancellation), terminating. Error: \(error)")
                                     break
                                 }
                             }
-                            Logger.log("Progress update task loop finished.")
+                            DebugLogger.log("Progress update task loop finished.")
                         } // Same as before
                         return newRecordingUrl
                     } else { // record() failed
-                        Logger.log("audioRecorder.record() returned false.")
+                        DebugLogger.log("audioRecorder.record() returned false.")
                         Task { try? audioSession.setActive(false, options: .notifyOthersOnDeactivation) }
                         self.audioRecorder = nil; self.currentRecordingURL = nil;
                     }
                 } else { // prepareToRecord() failed
-                    Logger.log("audioRecorder.prepareToRecord() returned false.")
+                    DebugLogger.log("audioRecorder.prepareToRecord() returned false.")
                     Task { try? audioSession.setActive(false, options: .notifyOthersOnDeactivation) }
                     self.audioRecorder = nil; self.currentRecordingURL = nil;
                 }
 
             } catch {
-                Logger.log("Error during recording setup/start: \(error.localizedDescription)")
+                DebugLogger.log("Error during recording setup/start: \(error.localizedDescription)")
                 Task { try? audioSession.setActive(false, options: .notifyOthersOnDeactivation) }
                 audioRecorder = nil; self.currentRecordingURL = nil;
             }
@@ -163,7 +163,7 @@ final actor Recorder {
 
     private func onTimerTick(_ durationProgressHandler: @escaping ProgressHandler) {
         guard let recorder = audioRecorder, recorder.isRecording else {
-            // Logger.log("onTimerTick: Recorder not valid or not recording.") // Can be too verbose
+            // DebugLogger.log("onTimerTick: Recorder not valid or not recording.") // Can be too verbose
             return
         }
         recorder.updateMeters()
@@ -179,12 +179,12 @@ final actor Recorder {
         if currentWaveformSamples.count > maxWaveformSamples {
             currentWaveformSamples.removeFirst(currentWaveformSamples.count - maxWaveformSamples)
         }
-        Logger.log("onTimerTick: Calling durationProgressHandler with duration \(currentDuration), samples count \(currentWaveformSamples.count)")
+        DebugLogger.log("onTimerTick: Calling durationProgressHandler with duration \(currentDuration), samples count \(currentWaveformSamples.count)")
         durationProgressHandler(currentDuration, currentWaveformSamples)
     }
     
     func stopRecording() -> (duration: Double, samples: [CGFloat], url: URL?) {
-        Logger.log("stopRecording called. Current recorder state: \(audioRecorder != nil), isRecording: \(self.isRecording)")
+        DebugLogger.log("stopRecording called. Current recorder state: \(audioRecorder != nil), isRecording: \(self.isRecording)")
         var finalDuration = self.currentDuration
         var finalSamples = self.currentWaveformSamples
         let urlForThisRecording = self.currentRecordingURL
@@ -205,17 +205,17 @@ final actor Recorder {
                     finalSamples.removeFirst(finalSamples.count - maxWaveformSamples)
                 }
                 recorder.stop()
-                Logger.log("Recording hardware stopped. Duration at stop: \(finalDuration). Samples collected: \(finalSamples.count)")
+                DebugLogger.log("Recording hardware stopped. Duration at stop: \(finalDuration). Samples collected: \(finalSamples.count)")
             } else {
                 finalDuration = recorder.currentTime
-                Logger.log("stopRecording: recorder was not actively recording. Duration from recorder: \(finalDuration). Using currentDuration if greater: \(self.currentDuration)")
+                DebugLogger.log("stopRecording: recorder was not actively recording. Duration from recorder: \(finalDuration). Using currentDuration if greater: \(self.currentDuration)")
                 if finalDuration < 0.01 && self.currentDuration > 0.01 {
                     finalDuration = self.currentDuration
                     finalSamples = self.currentWaveformSamples
                 }
             }
         } else {
-            Logger.log("stopRecording: audioRecorder was nil. Using current properties.")
+            DebugLogger.log("stopRecording: audioRecorder was nil. Using current properties.")
         }
         
         stopRecordingCleanupInternals()
@@ -226,7 +226,7 @@ final actor Recorder {
         self.currentWaveformSamples = []
         // self.currentRecordingURL = nil; // URL is part of result
         
-        Logger.log("stopRecording returning: Duration=\(result.duration), Samples=\(result.samples.count), URL=\(result.url?.lastPathComponent ?? "nil")")
+        DebugLogger.log("stopRecording returning: Duration=\(result.duration), Samples=\(result.samples.count), URL=\(result.url?.lastPathComponent ?? "nil")")
         return result
     }
 
@@ -236,24 +236,24 @@ final actor Recorder {
 
         if audioRecorder != nil {
             if audioRecorder!.isRecording {
-                Logger.log("Cleanup: audioRecorder was still marked as recording, stopping it now.")
+                DebugLogger.log("Cleanup: audioRecorder was still marked as recording, stopping it now.")
                 audioRecorder!.stop()
             }
             audioRecorder = nil
         }
-        Logger.log("Internal cleanup: progress task cancelled/nil, recorder instance nilled.")
+        DebugLogger.log("Internal cleanup: progress task cancelled/nil, recorder instance nilled.")
         
         // Strategy: Leave session active after recording stops to reduce latency for immediate playback or next recording.
         // If explicit deactivation is desired here, it would be:
         // Task {
         //     do {
         //         try self.audioSession.setActive(false, options: .notifyOthersOnDeactivation)
-        //         Logger.log("Audio session deactivated in stopRecordingCleanupInternals.")
+        //         DebugLogger.log("Audio session deactivated in stopRecordingCleanupInternals.")
         //     } catch {
-        //         Logger.log("Error deactivating audio session in stopRecordingCleanupInternals: \(error)")
+        //         DebugLogger.log("Error deactivating audio session in stopRecordingCleanupInternals: \(error)")
         //     }
         // }
-        Logger.log("Audio session intentionally NOT deactivated in Recorder.stopRecordingCleanupInternals.")
+        DebugLogger.log("Audio session intentionally NOT deactivated in Recorder.stopRecordingCleanupInternals.")
     }
     
     private func fileExtension(for formatID: AudioFormatID) -> String? {
@@ -261,7 +261,7 @@ final actor Recorder {
         case kAudioFormatMPEG4AAC: return ".aac"
         case kAudioFormatLinearPCM: return ".wav"
         default:
-            Logger.log("Unknown audio format ID: \(formatID), defaulting to .audio")
+            DebugLogger.log("Unknown audio format ID: \(formatID), defaulting to .audio")
             return ".audio"
         }
     }
