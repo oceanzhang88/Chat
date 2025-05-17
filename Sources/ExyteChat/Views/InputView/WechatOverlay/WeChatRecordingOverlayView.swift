@@ -3,7 +3,7 @@ import SwiftUI
 
 // MARK: - Main Overlay View
 struct WeChatRecordingOverlayView: View {
-    @ObservedObject var inputViewModel: InputViewModel
+    var inputViewModel: InputViewModel
     @Environment(\.chatTheme) private var theme
 
     @State private var displayWaveformData: [CGFloat] = [] // For passing to indicator

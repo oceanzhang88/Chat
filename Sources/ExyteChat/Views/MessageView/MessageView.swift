@@ -2,8 +2,6 @@
 //  MessageView.swift
 //  Chat
 //
-//  Created by Alex.M on 23.05.2022.
-//
 
 import SwiftUI
 

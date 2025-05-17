@@ -12,7 +12,7 @@ struct BottomControlsView: View {
     
     var currentPhase: WeChatRecordingPhase
     var localization: ChatLocalization
-    @ObservedObject var inputViewModel: InputViewModel
+    var inputViewModel: InputViewModel
     let inputBarHeight: CGFloat
     
     var onCancel: () -> Void // For X button during recording/dragging (uses OverlayButton)

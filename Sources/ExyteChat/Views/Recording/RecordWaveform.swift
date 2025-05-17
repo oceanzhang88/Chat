@@ -1,9 +1,6 @@
 //
 //  RecordWaveform.swift
 //  
-//
-//  Created by Alisa Mylnikova on 14.03.2023.
-//
 
 import SwiftUI
 

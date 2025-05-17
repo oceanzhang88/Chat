@@ -1,7 +1,3 @@
-//
-//  Created by Alex.M on 17.06.2022.
-//
-
 import Foundation
 
 public enum UserType: Int, Codable, Sendable {

@@ -1,9 +1,7 @@
 //
 //  MessageMenu.swift
 //
-//
-//  Created by Alisa Mylnikova on 20.03.2023.
-//
+
 
 import SwiftUI
 

@@ -2,7 +2,7 @@
 import SwiftUI
 
 struct WeChatInputView: View {
-    @ObservedObject var viewModel: InputViewModel
+    @Bindable var viewModel: InputViewModel
     @EnvironmentObject var globalFocusState: GlobalFocusState
     @EnvironmentObject var keyboardState: KeyboardState
 

@@ -1,12 +1,10 @@
 //
 //  RecordingPlayer.swift
 //
-//
-//  Created by Alexandra Afonasova on 21.06.2022.
-//
 
-@preconcurrency import Combine
-@preconcurrency import AVFoundation
+
+import Combine
+import AVFoundation
 
 final actor RecordingPlayer: ObservableObject {
 

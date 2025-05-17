@@ -1,7 +1,3 @@
-//
-//  Created by Alex.M on 22.06.2022.
-//
-
 import Foundation
 import Combine
 

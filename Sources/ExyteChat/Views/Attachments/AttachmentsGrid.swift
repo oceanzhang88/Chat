@@ -1,7 +1,3 @@
-//
-//  Created by Alex.M on 16.06.2022.
-//
-
 import SwiftUI
 
 struct AttachmentsGrid: View {

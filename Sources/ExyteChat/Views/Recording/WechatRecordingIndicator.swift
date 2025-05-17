@@ -3,7 +3,7 @@ import SwiftUI
 
 struct WechatRecordingIndicator: View {
     @Environment(\.chatTheme) private var theme
-    @ObservedObject var inputViewModel: InputViewModel
+    var inputViewModel: InputViewModel
 
     var waveformData: [CGFloat] // Passed for .recording and .draggingToCancel
 
@@ -79,7 +79,7 @@ struct WechatRecordingIndicator: View {
 
     init(waveformData: [CGFloat], inputViewModel: InputViewModel) {
         self.waveformData = waveformData
-        _inputViewModel = ObservedObject(wrappedValue: inputViewModel)
+        self.inputViewModel = inputViewModel
         _animatedIndicatorHeight = State(initialValue: baseIndicatorHeight)
         // Initialize corner waveform icon data once
         _displayCornerWaveformIconData = State(initialValue: staticWaveformIconData(count: numberOfSamplesForCornerIndicator))

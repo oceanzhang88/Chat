@@ -1,5 +1,3 @@
-//  Copyright 2025 Compiler, Inc. All rights reserved.
-
 import Speech
 
 /// Manages custom language model preparation and configuration

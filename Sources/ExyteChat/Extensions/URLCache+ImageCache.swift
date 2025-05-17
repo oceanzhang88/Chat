@@ -1,7 +1,3 @@
-//
-//  Created by Alex.M on 30.06.2022.
-//
-
 import Foundation
 
 extension URLCache {

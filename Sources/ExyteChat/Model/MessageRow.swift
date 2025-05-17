@@ -1,7 +1,3 @@
-//
-//  Created by Alex.M on 08.07.2022.
-//
-
 import Foundation
 
 public enum PositionInUserGroup { // group from the same user

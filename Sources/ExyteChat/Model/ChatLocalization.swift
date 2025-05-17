@@ -1,9 +1,7 @@
 //
 //  ChatLocalization.swift
 //  Chat
-//
-//  Created by Aman Kumar on 18/12/24.
-//
+
 
 import Foundation
 

@@ -6,7 +6,7 @@ import GiphyUISDK // Assuming GPHMedia is from here
 import Speech // <--- ADD THIS LINE
 
 // ADD this enum:
-public enum WeChatRecordingPhase: Sendable, Equatable { // Make it Equatable for @Published
+public enum WeChatRecordingPhase: Sendable, Equatable { // Make it Equatable for 
     case idle
     case recording // Standard hold-to-talk recording
     case draggingToCancel
@@ -16,22 +16,56 @@ public enum WeChatRecordingPhase: Sendable, Equatable { // Make it Equatable for
 //    case sttError(String) // Optional: for specific STT error messages
 }
 
-@MainActor
-final class InputViewModel: ObservableObject {
+public enum RecorderType: Sendable, Equatable {
+    case simple
+    case transcriber
+}
 
-    @Published var text = ""
-    @Published var attachments = InputViewAttachments()
-    @Published var transcribedText: String = "" // For STT result
-    @Published var asrErrorMessage: String? = nil // For STT errors
-    @Published var isEditingASRText: Bool = false
-    @Published var showGiphyPicker = false
-    @Published var showPicker = false
-    @Published var mediaPickerMode = MediaPickerMode.photos
-    @Published var showActivityIndicator = false
-    @Published var shouldHideMainInputBar: Bool = false // NEW PROPERTY
+@Observable
+@MainActor
+final class InputViewModel {
+    
+    var transcribedText: String = "" // For STT result
+    var asrErrorMessage: String? = nil // For STT errors
+    var isEditingASRText: Bool = false
+    var mediaPickerMode = MediaPickerMode.photos
+    var showActivityIndicator = false
+    var shouldHideMainInputBar: Bool = false // NEW PROPERTY
+    
+    var recordingPlayer: RecordingPlayer?
+    var transcriber: DefaultTranscriberPresenter = DefaultTranscriberPresenter()
+    var didSendMessage: ((DraftMessage) -> Void)?
+    var recorder = Recorder()
+    var recordPlayerSubscription: AnyCancellable?
+    var subscriptions = Set<AnyCancellable>()
+    
+    var text = "" {
+        didSet  {
+            validateDraft()
+        }
+    }
+     var attachments = InputViewAttachments()  {
+         didSet  {
+             validateDraft()
+         }
+     }
+     var showGiphyPicker = false  {
+         didSet  {
+             if !showGiphyPicker {
+                 attachments.giphyMedia = nil
+             }
+         }
+     }
+     var showPicker = false  {
+         didSet  {
+             if !showPicker {
+                 attachments.medias = []
+             }
+         }
+     }
     
     // Existing state for general input view status
-    @Published var state: InputViewState = .empty {
+     var state: InputViewState = .empty {
         didSet {
             if oldValue != state {
                 DebugLogger.log("InputViewState changed from \(oldValue) to \(state)")
@@ -39,7 +73,7 @@ final class InputViewModel: ObservableObject {
         }
     }
     // New WeChat-specific phase for detailed gesture interaction
-    @Published var weChatRecordingPhase: WeChatRecordingPhase = .idle {
+     var weChatRecordingPhase: WeChatRecordingPhase = .idle {
         didSet {
             if oldValue != weChatRecordingPhase {
                 DebugLogger.log("WeChatRecordingPhase changed from \(oldValue) to \(weChatRecordingPhase)")
@@ -63,14 +97,14 @@ final class InputViewModel: ObservableObject {
             }
         }
     }
-    @Published var isRecordingAudioForOverlay: Bool = false {
+     var isRecordingAudioForOverlay: Bool = false {
         didSet {
             if oldValue != isRecordingAudioForOverlay {
                 DebugLogger.log("isRecordingAudioForOverlay changed from \(oldValue) to \(isRecordingAudioForOverlay)")
             }
         }
     }
-    @Published var isDraggingInCancelZoneOverlay: Bool = false {
+     var isDraggingInCancelZoneOverlay: Bool = false {
         didSet {
             if oldValue != isDraggingInCancelZoneOverlay {
                 DebugLogger.log("isDraggingInCancelZoneOverlay changed from \(oldValue) to \(isDraggingInCancelZoneOverlay)")
@@ -78,38 +112,37 @@ final class InputViewModel: ObservableObject {
         }
     }
     // ADD this for "Convert to Text" zone:
-    @Published var isDraggingToConvertToTextZoneOverlay: Bool = false {
+     var isDraggingToConvertToTextZoneOverlay: Bool = false {
         didSet {
             if oldValue != isDraggingToConvertToTextZoneOverlay {
                  DebugLogger.log("isDraggingToConvertToTextZoneOverlay changed to \(isDraggingToConvertToTextZoneOverlay)")
             }
         }
     }
-    @Published var cancelRectGlobal: CGRect = .zero {
+     var cancelRectGlobal: CGRect = .zero {
         didSet {
             // Optional: log when it changes if still debugging
             DebugLogger.log("InputViewModel: cancelRectGlobal updated to \(cancelRectGlobal)")
         }
     }
-    @Published var convertToTextRectGlobal: CGRect = .zero {
+     var convertToTextRectGlobal: CGRect = .zero {
         didSet {
             DebugLogger.log("InputViewModel: convertToTextRectGlobal updated to \(convertToTextRectGlobal)")
         }
     }
 
-    var recordingPlayer: RecordingPlayer?
-    var didSendMessage: ((DraftMessage) -> Void)?
-    var recorder = Recorder() // Assuming Recorder is an actor
-    var recordPlayerSubscription: AnyCancellable?
-    var subscriptions = Set<AnyCancellable>()
-    
     private var saveEditingClosure: ((String) -> Void)?
-    
+    // For monitoring transcriber activity
+    var transcriberIsRecordingSubscription: AnyCancellable?
+    var transcriberRmsLevelSubscription: AnyCancellable?
+    var transcriberDurationTimer: Timer?
+    var transcriberRecordingStartTime: Date?
+
     func onStart() {
         DebugLogger.log("onStart called. Current state: \(state)")
-        subscribeValidation()
-        subscribePicker()
-        subscribeGiphyPicker()
+//        subscribeValidation()
+//        subscribePicker()
+//        subscribeGiphyPicker()
     }
 
     func onStop() {
@@ -125,7 +158,10 @@ final class InputViewModel: ObservableObject {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             DebugLogger.log("reset called. Current state before reset: \(self.state)")
-            self.isEditingASRText = false // Add this
+
+            self.stopTranscriberMonitoring() // Ensure monitoring is stopped
+
+            self.isEditingASRText = false
             self.showPicker = false
             self.showGiphyPicker = false
             self.text = ""
@@ -137,7 +173,7 @@ final class InputViewModel: ObservableObject {
             self.isDraggingInCancelZoneOverlay = false
             self.isDraggingToConvertToTextZoneOverlay = false
             self.state = .empty
-            self.subscribeValidation() // Re-subscribe if needed, or manage subscriptions more carefully
+//            self.subscribeValidation()
             DebugLogger.log("States after reset: mainState=\(self.state), weChatPhase=\(self.weChatRecordingPhase)")
         }
     }
@@ -215,7 +251,7 @@ final class InputViewModel: ObservableObject {
             Task {
                 let hasPermission = await recorder.isAllowedToRecordAudio
                 if hasPermission {
-                    await recordAudio() // This will set weChatRecordingPhase = .recording on success
+                    await recordAudio(type: .simple) // This will set weChatRecordingPhase = .recording on success
                     if self.weChatRecordingPhase == .recording {
                         self.state = .isRecordingHold // Sync main state
                     } else { // recordAudio failed
@@ -239,7 +275,7 @@ final class InputViewModel: ObservableObject {
                         await self.inputViewActionInternal(.stopRecordAudio)
                     } else { // Not recording, so start tap-locked recording.
                         DebugLogger.log("Action .recordAudioTap: Starting tap-locked recording.")
-                        await recordAudio() // Sets weChatRecordingPhase = .recording
+                        await recordAudio(type: .simple) // Sets weChatRecordingPhase = .recording
                         if self.weChatRecordingPhase == .recording {
                             self.state = .isRecordingTap // Sync main state for tap-lock
                         } else {

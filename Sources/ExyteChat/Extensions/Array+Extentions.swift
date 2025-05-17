@@ -1,9 +1,6 @@
 //
 //  File.swift
 //  
-//
-//  Created by Alisa Mylnikova on 25.12.2023.
-//
 
 import Foundation
 

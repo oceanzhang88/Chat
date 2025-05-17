@@ -1,5 +1,3 @@
-//  Copyright © 2025 Compiler, Inc. All rights reserved.
-
 import Foundation
 
 /// A model for configuring custom language models in speech recognition

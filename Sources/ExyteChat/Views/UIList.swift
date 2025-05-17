@@ -1,9 +1,6 @@
 //
 //  UIList.swift
 //  
-//
-//  Created by Alisa Mylnikova on 24.02.2023.
-//
 
 import SwiftUI
 
@@ -19,7 +16,7 @@ struct UIList<MessageContent: View, InputView: View>: UIViewRepresentable {
     @Environment(\.chatTheme) var theme
 
     @ObservedObject var viewModel: ChatViewModel
-    @ObservedObject var inputViewModel: InputViewModel
+    var inputViewModel: InputViewModel
 
     @Binding var isScrolledToBottom: Bool
     @Binding var shouldScrollToTop: () -> ()
@@ -388,7 +385,7 @@ struct UIList<MessageContent: View, InputView: View>: UIViewRepresentable {
     class Coordinator: NSObject, UITableViewDataSource, UITableViewDelegate {
 
         @ObservedObject var viewModel: ChatViewModel
-        @ObservedObject var inputViewModel: InputViewModel
+        var inputViewModel: InputViewModel
 
         @Binding var isScrolledToBottom: Bool
         @Binding var isScrolledToTop: Bool

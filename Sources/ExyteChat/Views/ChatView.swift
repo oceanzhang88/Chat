@@ -128,7 +128,7 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
     var listSwipeActions: ListSwipeActions = ListSwipeActions()
     
     @StateObject private var viewModel = ChatViewModel()
-    @StateObject private var inputViewModel = InputViewModel()
+    @State private var inputViewModel = InputViewModel()
     @StateObject private var globalFocusState = GlobalFocusState()
     @StateObject private var networkMonitor = NetworkMonitor()
     @StateObject private var keyboardState = KeyboardState()

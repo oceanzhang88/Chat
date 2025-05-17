@@ -1,7 +1,3 @@
-//
-//  Created by Alex.M on 14.06.2022.
-//
-
 import SwiftUI
 
 struct TextInputView: View {

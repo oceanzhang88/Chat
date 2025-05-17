@@ -2,8 +2,6 @@
 //  ChatTheme+UserType.swift
 //  Chat
 //
-//  Created by ftp27 on 21.02.2025.
-//
 
 import SwiftUI
 

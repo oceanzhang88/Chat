@@ -1,9 +1,7 @@
 //
 //  File.swift
 //  
-//
-//  Created by admin on 2024/9/17.
-//
+
 
 import Foundation
 

@@ -1,7 +1,3 @@
-//
-//  Created by Alex.M on 02.10.2023.
-//
-
 import Foundation
 import Combine
 import UIKit

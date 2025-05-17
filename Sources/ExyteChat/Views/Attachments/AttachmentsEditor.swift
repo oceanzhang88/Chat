@@ -2,8 +2,6 @@
 //  AttachmentsEditor.swift
 //  Chat
 //
-//  Created by Alex.M on 22.06.2022.
-//
 
 import SwiftUI
 import ExyteMediaPicker
@@ -20,7 +18,7 @@ struct AttachmentsEditor<InputViewContent: View>: View {
     @EnvironmentObject private var keyboardState: KeyboardState
     @EnvironmentObject private var globalFocusState: GlobalFocusState
 
-    @ObservedObject var inputViewModel: InputViewModel
+    @Bindable var inputViewModel: InputViewModel
 
     var inputViewBuilder: InputViewBuilderClosure?
     var chatTitle: String?

@@ -1,5 +1,3 @@
-//  Copyright © 2025 Compiler, Inc. All rights reserved.
-
 import Speech
 
 /// A basic configuration implementation for testing purposes

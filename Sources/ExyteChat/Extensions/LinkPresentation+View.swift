@@ -1,9 +1,7 @@
 //
 //  LinkPresentation+View.swift
 //  Chat
-//
-//  Created by Matthew Fennell on 25/03/2025.
-//
+
 
 // LinkPresentation is not yet updated to support strict concurrency checking.
 // LPLinkMetadata is not sendable; meanwhile, startFetchingMetadata(for:) uses a background thread and runs in a

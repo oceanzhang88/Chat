@@ -2,7 +2,7 @@
 import SwiftUI
 
 struct ASRResultView: View {
-    @ObservedObject var inputViewModel: InputViewModel
+    var inputViewModel: InputViewModel
     @Environment(\.chatTheme) private var theme
     var localization: ChatLocalization
     var targetWidth: CGFloat // NEW: To match the indicator's width for ASR phase

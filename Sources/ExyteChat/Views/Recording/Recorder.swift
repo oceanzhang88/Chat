@@ -1,12 +1,10 @@
 //
 //  Recorder.swift
 //  
-//
-//  Created by Alisa Mylnikova on 09.03.2023.
-//
+
 
 import Foundation
-@preconcurrency import AVFoundation
+import AVFoundation
 
 final actor Recorder {
 

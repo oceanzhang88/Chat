@@ -1,5 +1,3 @@
-//  Copyright © 2025 Compiler, Inc. All rights reserved.
-
 import Speech
 import AVFoundation
 import Combine // Make sure Combine is imported for @Published if not already via @Observable
@@ -14,7 +12,13 @@ public class DefaultTranscriberPresenter: TranscriberPresenter {
     public var authStatus: SFSpeechRecognizerAuthorizationStatus = .notDetermined
     public var error: Error?
     public var rmsLevel: Float = 0.0 // Initialize with a default
-
+    public var audioDuration: TimeInterval? // To store the duration in seconds
+    public let availableLocales: [Locale]
+    #if os(iOS)
+    public var availableInputs: [AVAudioSessionPortDescription] = []
+    public var selectedInput: AVAudioSessionPortDescription?
+    #endif
+    
     public var lastRecordingURL: URL? {
         didSet {
             // When the URL is set, calculate its duration
@@ -28,7 +32,6 @@ public class DefaultTranscriberPresenter: TranscriberPresenter {
             }
         }
     }
-    public var audioDuration: TimeInterval? // To store the duration in seconds
 
     // --- Language Switching Properties ---
     public var currentLocale: Locale {
@@ -41,22 +44,15 @@ public class DefaultTranscriberPresenter: TranscriberPresenter {
             }
         }
     }
-    public let availableLocales: [Locale]
-    private var baseConfig: TranscriberConfiguration // To store other config settings
-    
     // Made internal to be accessible for re-init
     internal var transcriber: Transcriber?
+    
+    private var baseConfig: TranscriberConfiguration // To store other config settings
     private var recordingTask: Task<Void, Never>?
     private var onCompleteHandler: ((String) -> Void)?
     
     // +++ ADD THIS LINE BACK +++
     private let audioPlaybackService = AudioPlaybackService() // For playing back the recording
-        
-    
-    #if os(iOS)
-    public var availableInputs: [AVAudioSessionPortDescription] = []
-    public var selectedInput: AVAudioSessionPortDescription?
-    #endif
 
     public init(config: TranscriberConfiguration = TranscriberConfiguration()) {
         self.baseConfig = config // Store the initial/base configuration
@@ -124,54 +120,54 @@ public class DefaultTranscriberPresenter: TranscriberPresenter {
     }
 
     // --- Method to Change Language ---
-        public func changeLanguage(toLocale newLocale: Locale) async {
-            guard currentLocale != newLocale else { return } // No change needed
+    public func changeLanguage(toLocale newLocale: Locale) async {
+        guard currentLocale != newLocale else { return } // No change needed
 
-            let wasRecording = self.isRecording
+        let wasRecording = self.isRecording
 
-            if wasRecording {
-                await stopRecordingProcess() // Stop current recording cleanly
-            }
-
-            currentLocale = newLocale
-            // Create new configuration with the new locale, keeping other settings from baseConfig
-            let newConfig = TranscriberConfiguration(
-                locale: newLocale,
-                silenceThreshold: baseConfig.silenceThreshold,
-                silenceDuration: baseConfig.silenceDuration,
-                languageModelInfo: baseConfig.languageModelInfo,
-                // Check if on-device recognition is supported for the new locale
-                // This might require querying SFSpeechRecognizer(locale: newLocale)?.supportsOnDeviceRecognition
-                requiresOnDeviceRecognition: SFSpeechRecognizer(locale: newLocale)?.supportsOnDeviceRecognition == true ? baseConfig.requiresOnDeviceRecognition : false,
-                shouldReportPartialResults: baseConfig.shouldReportPartialResults,
-                contextualStrings: baseConfig.contextualStrings,
-                taskHint: baseConfig.taskHint,
-                addsPunctuation: baseConfig.addsPunctuation
-            )
-            self.baseConfig = newConfig // Update baseConfig if you want changes to persist across further locale changes
-
-            // Re-initialize the transcriber
-            self.transcriber = Transcriber(config: newConfig, debugLogging: true)
-            if self.transcriber == nil {
-                self.error = TranscriberError.noRecognizer // Or a more specific error
-                print("Failed to initialize transcriber for locale: \(newLocale.identifier)")
-                // Optionally, revert to the old locale or handle the error appropriately
-                return
-            }
-
-            // Re-check authorization status for the new recognizer (optional, generally app-wide)
-            // await requestAuthorization()
-            // If authStatus changed or became .notAuthorized, handle it.
-
-            if wasRecording {
-                // Restart recording with the new language
-                // Reset transcribedText as it's a new session
-                self.transcribedText = ""
-                self.audioDuration = nil
-                self.lastRecordingURL = nil
-                await startRecordingProcess()
-            }
+        if wasRecording {
+            await stopRecordingProcess() // Stop current recording cleanly
         }
+
+        currentLocale = newLocale
+        // Create new configuration with the new locale, keeping other settings from baseConfig
+        let newConfig = TranscriberConfiguration(
+            locale: newLocale,
+            silenceThreshold: baseConfig.silenceThreshold,
+            silenceDuration: baseConfig.silenceDuration,
+            languageModelInfo: baseConfig.languageModelInfo,
+            // Check if on-device recognition is supported for the new locale
+            // This might require querying SFSpeechRecognizer(locale: newLocale)?.supportsOnDeviceRecognition
+            requiresOnDeviceRecognition: SFSpeechRecognizer(locale: newLocale)?.supportsOnDeviceRecognition == true ? baseConfig.requiresOnDeviceRecognition : false,
+            shouldReportPartialResults: baseConfig.shouldReportPartialResults,
+            contextualStrings: baseConfig.contextualStrings,
+            taskHint: baseConfig.taskHint,
+            addsPunctuation: baseConfig.addsPunctuation
+        )
+        self.baseConfig = newConfig // Update baseConfig if you want changes to persist across further locale changes
+
+        // Re-initialize the transcriber
+        self.transcriber = Transcriber(config: newConfig, debugLogging: true)
+        if self.transcriber == nil {
+            self.error = TranscriberError.noRecognizer // Or a more specific error
+            print("Failed to initialize transcriber for locale: \(newLocale.identifier)")
+            // Optionally, revert to the old locale or handle the error appropriately
+            return
+        }
+
+        // Re-check authorization status for the new recognizer (optional, generally app-wide)
+        // await requestAuthorization()
+        // If authStatus changed or became .notAuthorized, handle it.
+
+        if wasRecording {
+            // Restart recording with the new language
+            // Reset transcribedText as it's a new session
+            self.transcribedText = ""
+            self.audioDuration = nil
+            self.lastRecordingURL = nil
+            await startRecordingProcess()
+        }
+    }
     
     // Helper to stop recording process
     private func stopRecordingProcess() async {

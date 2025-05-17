@@ -9,12 +9,101 @@ import Foundation
 import Combine
 import ExyteMediaPicker // Assuming Media is from here
 import GiphyUISDK // Assuming GPHMedia is from here
-import Speech // <--- ADD THIS LINE
+import Speech 
 
 
 // Transcriber
 extension InputViewModel {
+    // Function to start monitoring transcriber for live UI updates
+    func startTranscriberMonitoring() {
+        stopTranscriberMonitoring() // Ensure no previous monitors are running
+
+        guard transcriber.isRecording else {
+            DebugLogger.log("startTranscriberMonitoring: Transcriber is not recording. Not starting monitor.")
+            return
+        }
+        DebugLogger.log("startTranscriberMonitoring: Starting to monitor transcriber activity.")
+
+        // Initialize/reset recording attachment for live updates
+        self.attachments.recording = Recording(duration: 0, waveformSamples: [])
+        self.transcriberRecordingStartTime = Date()
+
+//        // Monitor isRecording state of the transcriber
+//        transcriberIsRecordingSubscription = transcriber.$isRecording
+//            .receive(on: DispatchQueue.main)
+//            .sink { [weak self] isRecordingActive in
+//                if !isRecordingActive {
+//                    self?.stopTranscriberMonitoring()
+//                    DebugLogger.log("startTranscriberMonitoring: Transcriber stopped recording (observed via publisher). Finalizing attachment URL.")
+//                    if let finalURL = self?.transcriber.lastRecordingURL {
+//                        self?.attachments.recording?.url = finalURL
+//                         if let finalDuration = self?.transcriber.audioDuration { // If presenter has final duration
+//                            self?.attachments.recording?.duration = finalDuration
+//                        }
+//                        DebugLogger.log("Transcriber auto-stopped or stopped externally. Finalized URL: \(finalURL.path).")
+//                        // Update main state if necessary, e.g., if it wasn't part of a send/STT action
+//                        if (self?.weChatRecordingPhase == .recording || self?.state == .isRecordingHold || self?.state == .isRecordingTap) && self?.attachments.recording?.url != nil {
+//                             self?.state = .hasRecording
+//                        }
+//                    } else {
+//                        DebugLogger.log("Transcriber stopped but no URL. Resetting attachment.")
+//                        self?.attachments.recording = nil
+//                    }
+//                }
+//            }
+//
+//        // Monitor RMS Level from DefaultTranscriberPresenter
+//        transcriberRmsLevelSubscription = transcriber.$rmsLevel
+//            .receive(on: DispatchQueue.main)
+//            .sink { [weak self] rms in
+//                guard let self = self, self.transcriber.isRecording else { return }
+//                // Append or update waveform samples
+//                // A more sophisticated waveform might average/downsample or keep a rolling window
+//                self.attachments.recording?.waveformSamples.append(CGFloat(rms))
+//                if (self.attachments.recording?.waveformSamples.count ?? 0) > 150 { // Example: Keep last 150 samples
+//                    self.attachments.recording?.waveformSamples.removeFirst( (self.attachments.recording?.waveformSamples.count ?? 150) - 150)
+//                }
+//            }
+//
+//        // Timer for duration
+//        transcriberDurationTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+//            guard let self = self, self.transcriber.isRecording, let startTime = self.transcriberRecordingStartTime else {
+//                self?.stopTranscriberMonitoring() // Stop if transcriber stopped or startTime is nil
+//                return
+//            }
+//            self.attachments.recording?.duration = Date().timeIntervalSince(startTime)
+//        }
+    }
+
+    // Function to stop monitoring
+    func stopTranscriberMonitoring() {
+        DebugLogger.log("stopTranscriberMonitoring: Stopping all transcriber monitors.")
+        transcriberIsRecordingSubscription?.cancel()
+        transcriberIsRecordingSubscription = nil
+        transcriberRmsLevelSubscription?.cancel()
+        transcriberRmsLevelSubscription = nil
+        transcriberDurationTimer?.invalidate()
+        transcriberDurationTimer = nil
+        transcriberRecordingStartTime = nil
+    }
     
+    func startEditingASRText() {
+        // Ensure we are in a state where editing makes sense
+        guard case .asrCompleteWithText = self.weChatRecordingPhase, self.asrErrorMessage == nil else {
+            DebugLogger.log("startEditingASRText: Not in a valid state to edit or ASR had an error.")
+            return
+        }
+
+        self.text = self.transcribedText // Populate the main input field
+        self.isEditingASRText = true
+        // self.attachments.recording = nil // Decide: Do we discard voice immediately on edit, or on send of text?
+                                        // Let's discard on send of text for now, to allow user to still send voice if they cancel edit.
+        self.weChatRecordingPhase = .idle // This will hide the WeChatRecordingOverlayView
+
+        DebugLogger.log("startEditingASRText: Switched to editing. Text: \(self.text)")
+        // Notify WeChatInputView to switch to text mode and focus
+//        NotificationCenter.default.post(name: .switchToTextInputAndFocus, object: self.inputFieldId)
+    }
 }
 
 // ASR + Audio Recording
@@ -26,25 +115,39 @@ extension InputViewModel {
         }
     }
 
-    
-    func recordAudio() async {
-        if await recorder.isRecording {
-            DebugLogger.log("recordAudio() called, but recorder is already recording.")
-            return
+    func recordAudio(type: RecorderType) async {
+        if type == .simple {
+            if await recorder.isRecording {
+                DebugLogger.log("recordAudio() called, but recorder is already recording.")
+                return
+            }
+        } else if type == .transcriber {
+            if await transcriber.isRecording {
+                DebugLogger.log("recordAudio() called, but recorder is already recording.")
+                return
+            }
         }
+
         DebugLogger.log("recordAudio() attempting to start new recording (permission should be granted).")
 
         await MainActor.run {
             self.attachments.recording = Recording() // Initialize with empty recording
         }
-
-        let url = await recorder.startRecording { duration, samples in
-            DispatchQueue.main.async { [weak self] in
-                self?.attachments.recording?.duration = duration
-                self?.attachments.recording?.waveformSamples = samples
+        
+        var url: URL? = nil
+        
+        if type == .simple {
+            url = await recorder.startRecording { duration, samples in
+                DispatchQueue.main.async { [weak self] in
+                    self?.attachments.recording?.duration = duration
+                    self?.attachments.recording?.waveformSamples = samples
+                }
             }
+        } else if type == .transcriber {
+            // Get url, keep updating duration and samples
         }
-
+        
+        
         await MainActor.run {
             if let recordingUrl = url {
                 self.attachments.recording?.url = recordingUrl
@@ -126,48 +229,6 @@ extension InputViewModel {
             }
         }
         // ***** END OF ACTUAL STT IMPLEMENTATION EXAMPLE *****
-        
-        // Keep the old mock logic commented out or remove if using real STT
-        /*
-        // Simulate STT processing
-        try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds delay
-
-        // Simulate success or failure
-        let success = Bool.random()
-        await MainActor.run {
-            if success {
-                let mockText = "This is a sample transcription of your voice message honey..."
-                self.transcribedText = mockText
-                self.asrErrorMessage = nil
-                self.weChatRecordingPhase = .asrCompleteWithText(mockText)
-                DebugLogger.log("STT Success: \(mockText)")
-            } else {
-                let mockError = "Speech recognition failed."
-                self.asrErrorMessage = mockError
-                // Decide if .hasRecording or .idle is better if STT fails but voice note exists
-                self.weChatRecordingPhase = .asrCompleteWithText("") // Use empty string to signify error
-                DebugLogger.log("STT Failed: \(mockError)")
-            }
-        }
-        */
-    }
-    
-    func startEditingASRText() {
-        // Ensure we are in a state where editing makes sense
-        guard case .asrCompleteWithText = self.weChatRecordingPhase, self.asrErrorMessage == nil else {
-            DebugLogger.log("startEditingASRText: Not in a valid state to edit or ASR had an error.")
-            return
-        }
-
-        self.text = self.transcribedText // Populate the main input field
-        self.isEditingASRText = true
-        // self.attachments.recording = nil // Decide: Do we discard voice immediately on edit, or on send of text?
-                                        // Let's discard on send of text for now, to allow user to still send voice if they cancel edit.
-        self.weChatRecordingPhase = .idle // This will hide the WeChatRecordingOverlayView
-
-        DebugLogger.log("startEditingASRText: Switched to editing. Text: \(self.text)")
-        // Notify WeChatInputView to switch to text mode and focus
-//        NotificationCenter.default.post(name: .switchToTextInputAndFocus, object: self.inputFieldId)
     }
 }
 
@@ -188,18 +249,18 @@ extension InputViewModel {
         }
     }
 
-    func subscribeValidation() {
-        $attachments.sink { [weak self] _ in self?.validateDraft() }.store(in: &subscriptions)
-        $text.sink { [weak self] _ in self?.validateDraft() }.store(in: &subscriptions)
-    }
-
-    func subscribeGiphyPicker() {
-        $showGiphyPicker.sink { [weak self] value in if !value { self?.attachments.giphyMedia = nil } }.store(in: &subscriptions)
-    }
-
-    func subscribePicker() {
-        $showPicker.sink { [weak self] value in if !value { self?.attachments.medias = [] } }.store(in: &subscriptions)
-    }
+//    func subscribeValidation() {
+//        $attachments.sink { [weak self] _ in self?.validateDraft() }.store(in: &subscriptions)
+//        $text.sink { [weak self] _ in self?.validateDraft() }.store(in: &subscriptions)
+//    }
+//
+//    func subscribeGiphyPicker() {
+//        $showGiphyPicker.sink { [weak self] value in if !value { self?.attachments.giphyMedia = nil } }.store(in: &subscriptions)
+//    }
+//
+//    func subscribePicker() {
+//        $showPicker.sink { [weak self] value in if !value { self?.attachments.medias = [] } }.store(in: &subscriptions)
+//    }
 
     func subscribeRecordPlayer() {
         Task { @MainActor in

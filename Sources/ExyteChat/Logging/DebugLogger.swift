@@ -1,5 +1,3 @@
-//  Copyright © 2025 Compiler, Inc. All rights reserved.
-
 import OSLog
 
 extension Logger {

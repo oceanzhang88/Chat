@@ -1,7 +1,3 @@
-//
-//  Created by Alex.M on 20.06.2022.
-//
-
 import SwiftUI
 
 struct AttachmentsPage: View {

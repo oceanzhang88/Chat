@@ -2,8 +2,6 @@
 //  InputView.swift
 //  Chat
 //
-//  Created by Alex.M on 25.05.2022.
-//
 
 import SwiftUI
 import ExyteMediaPicker
@@ -77,7 +75,7 @@ struct InputView: View {
 
     @EnvironmentObject private var keyboardState: KeyboardState
     
-    @ObservedObject var viewModel: InputViewModel
+    @Bindable var viewModel: InputViewModel
     var inputFieldId: UUID
     var style: InputViewStyle
     var availableInputs: [AvailableInputType]

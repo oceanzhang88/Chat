@@ -1,7 +1,3 @@
-//
-//  Created by Alex.M on 07.07.2022.
-//
-
 import SwiftUI
 
 struct AvatarView: View {

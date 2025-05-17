@@ -1,9 +1,7 @@
 //
 //  LinkPresentation+Cache.swift
 //  Chat
-//
-//  Created by Matthew Fennell on 25/03/2025.
-//
+
 
 import Foundation
 import LinkPresentation
