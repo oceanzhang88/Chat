@@ -131,7 +131,7 @@ public actor Transcriber {
         
         // --- BEGIN AUDIO FILE SETUP (within actor context) ---
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        self.audioFileUrl = documentsPath.appendingPathComponent("recordedAudio.caf")
+        self.audioFileUrl = documentsPath.appendingPathComponent(UUID().uuidString + ".caf")
         
         var capturedOutputAudioFile: AVAudioFile? // Variable to capture for the tap
         if let audioFileUrl = self.audioFileUrl {

@@ -126,7 +126,7 @@ struct WechatRecordingIndicator: View {
         .frame(height: animatedIndicatorHeight) // Height is animated
 //        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: animatedIndicatorHeight)
         .animation(.easeInOut(duration: 0.2), value: currentIndicatorColor)
-        .animation(.linear(duration: 0.07), value: waveformData) // For main waveform bars
+//        .animation(.linear(duration: 0.07), value: waveformData) // For main waveform bars
         .onAppear {
             animatedIndicatorHeight = baseIndicatorHeight
             // If starting directly in ASR mode (e.g., view re-render), ensure correct height

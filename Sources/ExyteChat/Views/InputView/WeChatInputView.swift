@@ -78,29 +78,38 @@ struct WeChatInputView: View {
 
     @ViewBuilder
     private var modeToggleButton: some View {
-        Button {
-            isVoiceMode.toggle()
-            if isVoiceMode {
+        // Use if/else to switch between two distinct Button views
+        if isVoiceMode {
+            Button {
+                isVoiceMode = false // Toggle the mode
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    isTextFocused = true // Focus text field
+                }
+            } label: {
+                Image(systemName: "keyboard")
+                    .resizable().scaledToFit()
+                    .frame(width: buttonIconSize, height: buttonIconSize)
+                    .foregroundStyle(theme.colors.mainText)
+                    .padding(buttonPadding)
+            }
+            .transition(.identity) // Explicitly no transition for appearance/disappearance
+            .frame(height: minInputHeight + (buttonPadding * 2))
+        } else {
+            Button {
+                isVoiceMode = true // Toggle the mode
                 isTextFocused = false
                 keyboardState.resignFirstResponder()
-                viewModel.weChatRecordingPhase = .idle // Ensure reset if switching mode
-            } else {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    isTextFocused = true
-                }
-            }
-        } label: {
-            ZStack {
-                Image(systemName: "keyboard")
-                    .resizable().scaledToFit().opacity(isVoiceMode ? 1 : 0)
+                viewModel.weChatRecordingPhase = .idle
+            } label: {
                 Image(systemName: "mic")
-                    .resizable().scaledToFit().opacity(isVoiceMode ? 0 : 1)
+                    .resizable().scaledToFit()
+                    .frame(width: buttonIconSize, height: buttonIconSize)
+                    .foregroundStyle(theme.colors.mainText)
+                    .padding(buttonPadding)
             }
-            .frame(width: buttonIconSize, height: buttonIconSize)
-            .foregroundStyle(theme.colors.mainText)
-            .padding(buttonPadding)
+            .transition(.identity) // Explicitly no transition for appearance/disappearance
+            .frame(height: minInputHeight + (buttonPadding * 2))
         }
-        .frame(height: minInputHeight + (buttonPadding * 2))
     }
 
     @ViewBuilder
@@ -199,25 +208,22 @@ struct WeChatInputView: View {
                         DebugLogger.log("Gesture Ended on .draggingToCancel. Action: deleteRecord")
                         performInputAction(.deleteRecord)
                     } else if endedOverConvertToText {
-                        DebugLogger.log("Gesture Ended on .draggingToConvertToText. Action: stop and prepare for STT")
+                        DebugLogger.log("Gesture Ended on .draggingToConvertToText. Setting intent to .convertToText and stopping transcriber.")
+                        viewModel.currentRecordingIntent = .convertToText // Set the intent
 
-                        // 1. Stop recording (this gets the audio file URL and duration)
-                        performInputAction(.stopRecordAudio) // This sets viewModel.state = .hasRecording if successful
+                        Task { @MainActor in // Ensure operations on viewModel are on MainActor
                             
-                        // 2. Initiate STT
-                        Task { @MainActor in // Ensure UI updates and async calls are managed on MainActor
-                            viewModel.weChatRecordingPhase = .processingASR
-                            await viewModel.performSpeechToText() // This will eventually set .asrCompleteWithText
-                            // Check if stopRecordAudio successfully resulted in a recording
-//                            if viewModel.state == .hasRecording, let _ = viewModel.attachments.recording {
-//                                viewModel.weChatRecordingPhase = .processingASR // Show "Processing..."
-//                                DebugLogger.log("Transitioning to .processingASR for actual STT")
-//                                
-//                            } else {
-//                                DebugLogger.log("No valid recording after stop for STT. Cleaning up.")
-//                                // If there was no recording, or stopRecordAudio failed, treat as cancel
-//                                performInputAction(.deleteRecord)
-//                            }
+                            // Evaluate the await expression first and store its result
+                            let isTranscriberCurrentlyRecording = await viewModel.transcriber.isRecording
+                            if viewModel.state == .isRecordingHold && isTranscriberCurrentlyRecording { // Check if transcriber was indeed active
+                                await viewModel.transcriber.stopRecording()
+                                // The transcriber's completion handler (modified in step 2) will use the .convertToText intent
+                                // and set weChatRecordingPhase = .asrCompleteWithText, showing the ASR results UI.
+                            } else {
+                                // Fallback or error: transcriber wasn't active as expected, or was not in .isRecordingHold state.
+                                DebugLogger.log("ConvertToText: Transcriber was not active or not in the expected state. Performing cleanup.")
+                                performInputAction(.deleteRecord) // Perform cleanup by deleting any partial recording
+                            }
                         }
                     } else { // Released in the "send voice" zone (center)
                         DebugLogger.log("Gesture Ended on .recording (normal release). Action: send")

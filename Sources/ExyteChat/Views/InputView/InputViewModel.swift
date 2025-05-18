@@ -21,6 +21,12 @@ public enum RecorderType: Sendable, Equatable {
     case transcriber
 }
 
+enum RecordingIntent: Sendable, Equatable {
+    case sendAudioOnly
+    case convertToText
+    case none // For other cases like natural end of speech
+}
+
 @Observable
 @MainActor
 final class InputViewModel {
@@ -38,6 +44,8 @@ final class InputViewModel {
     var recorder = Recorder()
     var recordPlayerSubscription: AnyCancellable?
     var subscriptions = Set<AnyCancellable>()
+    
+    var currentRecordingIntent: RecordingIntent = .none
     
     var text = "" {
         didSet  {
@@ -159,8 +167,6 @@ final class InputViewModel {
             guard let self = self else { return }
             DebugLogger.log("reset called. Current state before reset: \(self.state)")
 
-            self.stopTranscriberMonitoring() // Ensure monitoring is stopped
-
             self.isEditingASRText = false
             self.showPicker = false
             self.showGiphyPicker = false
@@ -179,31 +185,33 @@ final class InputViewModel {
     }
 
     func send() {
-        DebugLogger.log("send() called. Current state: \(state)")
+        DebugLogger.log("send() called. State: \(state), WeChatPhase: \(weChatRecordingPhase)")
         Task {
-            // If we were in a recording phase, ensure it's properly stopped.
-            if self.weChatRecordingPhase == .recording || self.state == .isRecordingHold || self.state == .isRecordingTap {
-                DebugLogger.log("Send called while recording was active, stopping recorder first.")
-                let recordingResult = await recorder.stopRecording() // Ensure recorder is stopped
-                if let url = recordingResult.url, recordingResult.duration > 0.1 {
-                     self.attachments.recording = Recording(duration: recordingResult.duration, waveformSamples: recordingResult.samples, url: url)
-                     // self.state = .hasRecording // Main state indicates a recording is ready; sendMessage will handle this
-                } else if self.text.isEmpty && self.attachments.medias.isEmpty {
-                     // Only clear recording if nothing else to send
-                     self.attachments.recording = nil
+            if self.state == .isRecordingHold && self.weChatRecordingPhase == .recording { // Transcriber was active from a "Hold to Talk"
+                DebugLogger.log("Send: Transcriber (Hold) was active. Setting intent to .sendAudioOnly and stopping transcriber.")
+                self.currentRecordingIntent = .sendAudioOnly // Set the intent
+                await self.transcriber.stopRecording() // Stop the transcriber
+                // The transcriber's completion handler (modified in step 2) will run.
+                // It will populate self.attachments.recording and set self.state = .hasRecording.
+                // It will *not* set weChatRecordingPhase to .asrCompleteWithText due to the .sendAudioOnly intent.
+            } else if self.state == .isRecordingTap && self.weChatRecordingPhase == .recording { // Simple recorder from tap-lock
+                DebugLogger.log("Send: Simple Recorder (Tap) was active. Stopping simple recorder.")
+                let simpleRecResult = await recorder.stopRecording()
+                if let url = simpleRecResult.url, simpleRecResult.duration > 0.1 {
+                    self.attachments.recording = Recording(duration: simpleRecResult.duration, waveformSamples: simpleRecResult.samples, url: url)
+                    self.state = .hasRecording // Ensure state reflects this before sendMessage
+                } else {
+                    self.attachments.recording = nil // Clear if invalid
                 }
-                DebugLogger.log("Stopped recording via send. Duration: \(self.attachments.recording?.duration ?? 0)")
             }
+            // else: No active recording to stop, or state is already .hasRecording / .hasTextOrMedia from a previous operation.
 
-            // If sending transcribed text, it should be in `self.text` by now.
-            // If sending voice after STT, `self.text` might be empty and `self.attachments.recording` should be valid.
-
+            // Check if there's anything valid to send
             if !self.text.isEmpty || !self.attachments.medias.isEmpty || (self.attachments.recording != nil && (self.attachments.recording?.duration ?? 0) > 0.1) || self.attachments.giphyMedia != nil {
-                sendMessage() // This internally calls reset which should set phase to .idle
+                sendMessage() // This internally calls reset(), which will set weChatRecordingPhase to .idle
             } else {
-                DebugLogger.log("Send called, but nothing to send. Cleaning up with deleteRecord logic.")
-                // Effectively a cancel/cleanup if there's nothing valid to send
-                self.inputViewActionInternal(.deleteRecord)
+                DebugLogger.log("Send: Nothing valid to send after processing active recording. Cleaning up.")
+                self.inputViewActionInternal(.deleteRecord) // This also calls reset()
             }
         }
     }
@@ -251,7 +259,7 @@ final class InputViewModel {
             Task {
                 let hasPermission = await recorder.isAllowedToRecordAudio
                 if hasPermission {
-                    await recordAudio(type: .simple) // This will set weChatRecordingPhase = .recording on success
+                    await recordAudio(type: .transcriber) // This will set weChatRecordingPhase = .recording on success
                     if self.weChatRecordingPhase == .recording {
                         self.state = .isRecordingHold // Sync main state
                     } else { // recordAudio failed
@@ -320,17 +328,39 @@ final class InputViewModel {
 
         case .deleteRecord:
             Task {
-                DebugLogger.log("Action .deleteRecord.")
-                unsubscribeRecordPlayer()
-                _ = await recorder.stopRecording() // Ensure recorder is stopped
-                self.attachments.recording = nil
-                self.transcribedText = ""
-                self.asrErrorMessage = nil
-                self.isEditingASRText = false // Also reset editing state here
-                self.state = .empty
-                self.weChatRecordingPhase = .idle
-                self.isDraggingInCancelZoneOverlay = false
-                self.isDraggingToConvertToTextZoneOverlay = false
+                DebugLogger.log("Action .deleteRecord initiated.")
+                await MainActor.run { // Ensure UI-related properties are set on main actor
+                    unsubscribeRecordPlayer()
+                }
+
+                // Stop the simple recorder if it was active
+                if await recorder.isRecording {
+                    DebugLogger.log(".deleteRecord: Simple recorder is active, stopping it.")
+                    _ = await recorder.stopRecording()
+                }
+
+                // ***** THIS IS THE CRUCIAL ADDITION/MODIFICATION *****
+                // Stop the DefaultTranscriberPresenter (and its internal Transcriber) if it was active
+                // 'self.transcriber' is the instance of DefaultTranscriberPresenter in InputViewModel
+                if await self.transcriber.isRecording {
+                    DebugLogger.log(".deleteRecord: Transcriber (DefaultTranscriberPresenter) is active, stopping it.")
+                    await self.transcriber.stopRecording() // This calls the presenter's stop method
+                }
+                // ***** END OF CRUCIAL ADDITION/MODIFICATION *****
+
+                // Reset all relevant states on the main actor
+                await MainActor.run {
+                    self.attachments.recording = nil
+                    self.transcribedText = ""
+                    self.asrErrorMessage = nil
+                    self.isEditingASRText = false
+                    self.state = .empty // General state
+                    self.weChatRecordingPhase = .idle // WeChat specific phase
+                    self.isDraggingInCancelZoneOverlay = false // UI state for drag zone
+                    self.isDraggingToConvertToTextZoneOverlay = false // UI state for drag zone
+                    self.currentRecordingIntent = .none // Reset recording intent
+                    DebugLogger.log(".deleteRecord: Cleanup complete. All states reset.")
+                }
             }
         case .playRecord:
             DebugLogger.log("Action .playRecord.")

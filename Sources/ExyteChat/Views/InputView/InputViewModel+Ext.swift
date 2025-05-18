@@ -14,79 +14,7 @@ import Speech
 
 // Transcriber
 extension InputViewModel {
-    // Function to start monitoring transcriber for live UI updates
-    func startTranscriberMonitoring() {
-        stopTranscriberMonitoring() // Ensure no previous monitors are running
 
-        guard transcriber.isRecording else {
-            DebugLogger.log("startTranscriberMonitoring: Transcriber is not recording. Not starting monitor.")
-            return
-        }
-        DebugLogger.log("startTranscriberMonitoring: Starting to monitor transcriber activity.")
-
-        // Initialize/reset recording attachment for live updates
-        self.attachments.recording = Recording(duration: 0, waveformSamples: [])
-        self.transcriberRecordingStartTime = Date()
-
-//        // Monitor isRecording state of the transcriber
-//        transcriberIsRecordingSubscription = transcriber.$isRecording
-//            .receive(on: DispatchQueue.main)
-//            .sink { [weak self] isRecordingActive in
-//                if !isRecordingActive {
-//                    self?.stopTranscriberMonitoring()
-//                    DebugLogger.log("startTranscriberMonitoring: Transcriber stopped recording (observed via publisher). Finalizing attachment URL.")
-//                    if let finalURL = self?.transcriber.lastRecordingURL {
-//                        self?.attachments.recording?.url = finalURL
-//                         if let finalDuration = self?.transcriber.audioDuration { // If presenter has final duration
-//                            self?.attachments.recording?.duration = finalDuration
-//                        }
-//                        DebugLogger.log("Transcriber auto-stopped or stopped externally. Finalized URL: \(finalURL.path).")
-//                        // Update main state if necessary, e.g., if it wasn't part of a send/STT action
-//                        if (self?.weChatRecordingPhase == .recording || self?.state == .isRecordingHold || self?.state == .isRecordingTap) && self?.attachments.recording?.url != nil {
-//                             self?.state = .hasRecording
-//                        }
-//                    } else {
-//                        DebugLogger.log("Transcriber stopped but no URL. Resetting attachment.")
-//                        self?.attachments.recording = nil
-//                    }
-//                }
-//            }
-//
-//        // Monitor RMS Level from DefaultTranscriberPresenter
-//        transcriberRmsLevelSubscription = transcriber.$rmsLevel
-//            .receive(on: DispatchQueue.main)
-//            .sink { [weak self] rms in
-//                guard let self = self, self.transcriber.isRecording else { return }
-//                // Append or update waveform samples
-//                // A more sophisticated waveform might average/downsample or keep a rolling window
-//                self.attachments.recording?.waveformSamples.append(CGFloat(rms))
-//                if (self.attachments.recording?.waveformSamples.count ?? 0) > 150 { // Example: Keep last 150 samples
-//                    self.attachments.recording?.waveformSamples.removeFirst( (self.attachments.recording?.waveformSamples.count ?? 150) - 150)
-//                }
-//            }
-//
-//        // Timer for duration
-//        transcriberDurationTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-//            guard let self = self, self.transcriber.isRecording, let startTime = self.transcriberRecordingStartTime else {
-//                self?.stopTranscriberMonitoring() // Stop if transcriber stopped or startTime is nil
-//                return
-//            }
-//            self.attachments.recording?.duration = Date().timeIntervalSince(startTime)
-//        }
-    }
-
-    // Function to stop monitoring
-    func stopTranscriberMonitoring() {
-        DebugLogger.log("stopTranscriberMonitoring: Stopping all transcriber monitors.")
-        transcriberIsRecordingSubscription?.cancel()
-        transcriberIsRecordingSubscription = nil
-        transcriberRmsLevelSubscription?.cancel()
-        transcriberRmsLevelSubscription = nil
-        transcriberDurationTimer?.invalidate()
-        transcriberDurationTimer = nil
-        transcriberRecordingStartTime = nil
-    }
-    
     func startEditingASRText() {
         // Ensure we are in a state where editing makes sense
         guard case .asrCompleteWithText = self.weChatRecordingPhase, self.asrErrorMessage == nil else {
@@ -116,48 +44,109 @@ extension InputViewModel {
     }
 
     func recordAudio(type: RecorderType) async {
-        if type == .simple {
-            if await recorder.isRecording {
-                DebugLogger.log("recordAudio() called, but recorder is already recording.")
-                return
-            }
-        } else if type == .transcriber {
-            if await transcriber.isRecording {
-                DebugLogger.log("recordAudio() called, but recorder is already recording.")
-                return
-            }
+        // Stop any ongoing recording/transcription first to ensure clean state
+        if await recorder.isRecording {
+            DebugLogger.log("recordAudio: Simple recorder was active, stopping it.")
+            _ = await recorder.stopRecording() // Stop simple recorder
         }
-
-        DebugLogger.log("recordAudio() attempting to start new recording (permission should be granted).")
-
+        if await transcriber.isRecording {
+            DebugLogger.log("recordAudio: Transcriber was active, stopping it.")
+            await transcriber.stopRecording() // Stop transcriber
+        }
+        
+        // Reset attachments for the new recording session
         await MainActor.run {
-            self.attachments.recording = Recording() // Initialize with empty recording
+            self.attachments.recording = Recording()
+            self.transcribedText = ""
+            self.asrErrorMessage = nil
         }
-        
-        var url: URL? = nil
-        
+
         if type == .simple {
-            url = await recorder.startRecording { duration, samples in
+            DebugLogger.log("recordAudio: Starting simple recorder.")
+            let url = await recorder.startRecording { duration, samples in
                 DispatchQueue.main.async { [weak self] in
                     self?.attachments.recording?.duration = duration
                     self?.attachments.recording?.waveformSamples = samples
                 }
             }
+            await MainActor.run {
+                if let recordingUrl = url {
+                    self.attachments.recording?.url = recordingUrl
+                    self.state = .isRecordingHold // Or appropriate state
+                    self.weChatRecordingPhase = .recording
+                    DebugLogger.log("recordAudio (simple) successfully started. URL: \(recordingUrl.absoluteString).")
+                } else {
+                    DebugLogger.log("recordAudio (simple) failed to start.")
+                    self.attachments.recording = nil
+                    self.state = .empty
+                    self.weChatRecordingPhase = .idle
+                }
+            }
         } else if type == .transcriber {
-            // Get url, keep updating duration and samples
-        }
-        
-        
-        await MainActor.run {
-            if let recordingUrl = url {
-                self.attachments.recording?.url = recordingUrl
-                self.weChatRecordingPhase = .recording // Set the WeChat specific phase
-                DebugLogger.log("recordAudio() successfully started. URL: \(recordingUrl.absoluteString). Current weChatRecordingPhase: \(self.weChatRecordingPhase).")
-            } else {
-                DebugLogger.log("recordAudio() failed to start (url is nil). Resetting.")
-                self.attachments.recording = nil
-                self.state = .empty // Main state
-                self.weChatRecordingPhase = .idle // WeChat phase
+            DebugLogger.log("recordAudio: Starting transcriber with progress.")
+            await MainActor.run { // Ensure state updates are on main actor before async call
+                self.state = .isRecordingHold // Or a specific .isTranscribing state
+                self.weChatRecordingPhase = .recording // Or a specific .transcribing phase
+            }
+            do {
+                try await transcriber.startRecordingWithProgress { duration, samples, currentText in
+                        Task { @MainActor [weak self] in
+                            guard let self = self else { return }
+                            self.attachments.recording?.duration = duration
+                            let amplifiedSamples = samples.map { $0 * 10.0 }
+                            self.attachments.recording?.waveformSamples = amplifiedSamples
+                            self.transcribedText = currentText
+                        }
+                    }
+                    completionHandler: { finalText, finalURL in
+                        Task { @MainActor [weak self] in
+                            guard let self = self else { return }
+                            self.transcribedText = finalText
+                            self.attachments.recording?.url = finalURL
+                            
+                            if let url = finalURL, let presenterDuration = await self.transcriber.audioDuration {
+                                self.attachments.recording?.duration = presenterDuration
+                            } else if finalURL == nil && !finalText.isEmpty { // Transcription succeeded but maybe audio saving failed
+                                self.attachments.recording?.duration = Date().timeIntervalSince(self.transcriber.recordingStartTime ?? Date())
+                            }
+
+
+                            if self.attachments.recording?.url != nil && (self.attachments.recording?.duration ?? 0) > 0.1 {
+                                self.state = .hasRecording
+                            } else if !finalText.isEmpty {
+                                 self.state = .hasTextOrMedia // Has text, but recording might be invalid/short
+                                 if self.attachments.recording?.url == nil { self.attachments.recording = nil } // Clear invalid recording
+                            } else {
+                                self.state = .empty
+                                self.attachments.recording = nil
+                            }
+                            
+                            if self.currentRecordingIntent == .convertToText {
+                                self.weChatRecordingPhase = .asrCompleteWithText(finalText)
+                                DebugLogger.log("Transcriber finished with intent .convertToText. Phase: asrCompleteWithText. Text: \(finalText)")
+                            } else if self.currentRecordingIntent == .sendAudioOnly {
+                                // For sendAudioOnly, the state is already .hasRecording (if audio is valid).
+                                // The weChatRecordingPhase will be reset to .idle by the send() -> sendMessage() -> reset() flow.
+                                // No specific phase change needed here, as send() will take over.
+                                DebugLogger.log("Transcriber finished with intent .sendAudioOnly. State should be .hasRecording.")
+                            } else { // .none (e.g., transcriber stopped due to silence)
+                                self.weChatRecordingPhase = .asrCompleteWithText(finalText) // Default to showing ASR results
+                                DebugLogger.log("Transcriber finished with intent .none. Phase: asrCompleteWithText. Text: \(finalText)")
+                            }
+                            self.currentRecordingIntent = .none // Reset intent for the next operation
+                        }
+                    }
+                
+                // If startRecordingWithProgress returns successfully, DefaultTranscriberPresenter.isRecording is true
+                DebugLogger.log("recordAudio (transcriber) successfully initiated.")
+            } catch {
+                DebugLogger.log("recordAudio (transcriber) failed to start: \(error.localizedDescription)")
+                await MainActor.run {
+                    self.attachments.recording = nil
+                    self.state = .empty
+                    self.weChatRecordingPhase = .idle
+                    self.asrErrorMessage = error.localizedDescription
+                }
             }
         }
     }
