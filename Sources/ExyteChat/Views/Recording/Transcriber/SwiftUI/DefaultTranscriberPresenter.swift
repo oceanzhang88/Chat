@@ -228,8 +228,8 @@ public class DefaultTranscriberPresenter: TranscriberPresenter {
                         self.rmsLevel = float
                         self.currentWaveformSamples.append(CGFloat(float))
                         // Optional: Prune samples if they grow too large
-                        if self.currentWaveformSamples.count > 300 { // Keep approx 3 seconds of samples at 100 samples/sec
-                            self.currentWaveformSamples.removeFirst(self.currentWaveformSamples.count - 300)
+                        if self.currentWaveformSamples.count > 40 { // Keep approx 3 seconds of samples at 100 samples/sec
+                            self.currentWaveformSamples.removeFirst(self.currentWaveformSamples.count - 40)
                         }
                         self.progressHandler?(currentDuration, self.currentWaveformSamples, self.transcribedText)
                     case .transcription(let string):

@@ -33,6 +33,15 @@ struct BottomControlsView: View {
         OverlayButton.highlightedCircleSize + OverlayButton.labelFontSize + 20
     }
     private var chatPushUpHeight: CGFloat { controlsContentHeight }
+    
+    // Dynamically determine the height of the arc based on the current phase
+    private var currentArcHeight: CGFloat {
+        // Hide arc when ASR result is shown
+        if case .asrCompleteWithText = currentPhase {
+            return 0
+        }
+        return arcAreaHeight
+    }
 
 
     var body: some View {
@@ -145,19 +154,22 @@ struct BottomControlsView: View {
                     .padding(.bottom, 10)
             }
             .frame(height: controlsContentHeight)
+            
+                // Arc Background Shape
+                ZStack {
+                    ArcBackgroundShape(sagitta: arcSagitta)
+                        .fill(arcBackgroundColor())
+                        .shadow(color: Color.black.opacity(0.2), radius: 5, y: -2)
 
-            // Arc Background Shape
-            ZStack {
-                ArcBackgroundShape(sagitta: arcSagitta)
-                    .fill(arcBackgroundColor())
-                    .shadow(color: Color.black.opacity(0.2), radius: 5, y: -2)
-
-                Image(systemName: "radiowaves.right") // Changed icon
-                    .font(.system(size: 22, weight: .light))
-                    .foregroundColor(Color(white: 0.4).opacity(0.7))
-                    .offset(y: arcSagitta - (arcAreaHeight / 2.5) - 5) // Adjusted offset
-            }
-            .frame(height: arcAreaHeight)
+                    Image(systemName: "radiowaves.right") // Changed icon
+                        .font(.system(size: 22, weight: .light))
+                        .foregroundColor(Color(white: 0.4).opacity(0.7))
+                        .offset(y: arcSagitta - (arcAreaHeight / 2.5) - 5) // Adjusted offset
+                }
+                .frame(height: arcAreaHeight)
+                .opacity(currentArcHeight > 0 ? 1 : 0)    
+            
+            
         }
         .background(GeometryReader { geometry in
             Color.clear.preference(key: VoiceOverlayBottomAreaHeightPreferenceKey.self, value: chatPushUpHeight)
@@ -166,7 +178,7 @@ struct BottomControlsView: View {
     
     private func calculateIncreasedDragArea(frameInGlobal: CGRect, type: String) -> CGRect {
         // Calculate the new frame with increased area
-        let newWidth = UIScreen.main.bounds.width * (type == "xmark" ?  0.55 : 0.45)
+        let newWidth = UIScreen.main.bounds.width * (type == "xmark" ?  0.55 : 0.5)
         let newHeight = frameInGlobal.height * 1.2
         // It's generally safer to adjust the size and keep the origin the same,
         // or adjust the origin to keep the center the same.

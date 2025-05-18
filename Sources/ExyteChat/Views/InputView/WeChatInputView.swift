@@ -169,8 +169,8 @@ struct WeChatInputView: View {
             .onChanged { value in
                 DebugLogger.log("Gesture.onChanged: LongPress active=\(value.first ?? false)")
                 guard value.first == true, let dragInfo = value.second else {
-                    if viewModel.isDraggingInCancelZoneOverlay { viewModel.isDraggingInCancelZoneOverlay = false }
-                    if viewModel.isDraggingToConvertToTextZoneOverlay { viewModel.isDraggingToConvertToTextZoneOverlay = false }
+                    if viewModel.isDraggingInCancelOverlay { viewModel.isDraggingInCancelOverlay = false }
+                    if viewModel.isDraggingToTextOverlay { viewModel.isDraggingToTextOverlay = false }
                     if viewModel.weChatRecordingPhase == .draggingToCancel || viewModel.weChatRecordingPhase == .draggingToConvertToText {
                          viewModel.weChatRecordingPhase = .recording
                     }
@@ -178,12 +178,11 @@ struct WeChatInputView: View {
                 }
 
                 let currentDragLocation = dragInfo.location
-                let isOverCancel = self.viewModel.cancelRectGlobal.contains(currentDragLocation) &&
-                !self.viewModel.cancelRectGlobal.isEmpty
+                let isOverCancel = self.viewModel.cancelRectGlobal.contains(currentDragLocation) && !self.viewModel.cancelRectGlobal.isEmpty
                 let isOverConvertToText = self.viewModel.convertToTextRectGlobal.contains(currentDragLocation) && !self.viewModel.convertToTextRectGlobal.isEmpty
                 
-                viewModel.isDraggingInCancelZoneOverlay = isOverCancel
-                viewModel.isDraggingToConvertToTextZoneOverlay = isOverConvertToText
+                viewModel.isDraggingInCancelOverlay = isOverCancel
+                viewModel.isDraggingToTextOverlay = isOverConvertToText
 
                 if isOverCancel {
                     if viewModel.weChatRecordingPhase != .draggingToCancel { viewModel.weChatRecordingPhase = .draggingToCancel }
@@ -196,12 +195,12 @@ struct WeChatInputView: View {
             .onEnded { value in
                 DebugLogger.log("Gesture.onEnded: LongPress active at end=\(value.first ?? false)")
                 let longPressWasSustained = value.first ?? false
-                let endedOverCancel = viewModel.isDraggingInCancelZoneOverlay // Capture before reset
-                let endedOverConvertToText = viewModel.isDraggingToConvertToTextZoneOverlay // Capture before reset
+                let endedOverCancel = viewModel.isDraggingInCancelOverlay // Capture before reset
+                let endedOverConvertToText = viewModel.isDraggingToTextOverlay // Capture before reset
 
                 // Reset UI drag states immediately
-                viewModel.isDraggingInCancelZoneOverlay = false
-                viewModel.isDraggingToConvertToTextZoneOverlay = false
+                viewModel.isDraggingInCancelOverlay = false
+                viewModel.isDraggingToTextOverlay = false
 
                 if longPressWasSustained {
                     if endedOverCancel {

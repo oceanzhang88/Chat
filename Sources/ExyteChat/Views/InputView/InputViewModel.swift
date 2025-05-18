@@ -92,38 +92,44 @@ final class InputViewModel {
                 weChatRecordingPhase != .asrCompleteWithText("") // Check against empty string in case of default value
                 // Add other conditions if STT success/error states should also hide the mic input part of overlay
             )
-
-            if isRecordingAudioForOverlay != shouldShowOverlay {
-                isRecordingAudioForOverlay = shouldShowOverlay
+            
+            if isRecordingAudioOverlay != shouldShowOverlay {
+                isRecordingAudioOverlay = shouldShowOverlay
             }
             
-            // Control main ChatView input bar visibility based on overlay's active phases
-            let newShouldHideMainInputBar = weChatRecordingPhase == .asrCompleteWithText("")
+            // Determine if the main ChatView input bar should be hidden
+            let newShouldHideMainInputBar: Bool
+            if case .asrCompleteWithText = weChatRecordingPhase {
+                newShouldHideMainInputBar = true // Hide main input bar when ASR results are shown
+            } else {
+                newShouldHideMainInputBar = false
+            }
+
             if self.shouldHideMainInputBar != newShouldHideMainInputBar {
                 self.shouldHideMainInputBar = newShouldHideMainInputBar
                 DebugLogger.log("shouldHideMainInputBar changed to \(self.shouldHideMainInputBar)")
             }
         }
     }
-     var isRecordingAudioForOverlay: Bool = false {
+     var isRecordingAudioOverlay: Bool = false {
         didSet {
-            if oldValue != isRecordingAudioForOverlay {
-                DebugLogger.log("isRecordingAudioForOverlay changed from \(oldValue) to \(isRecordingAudioForOverlay)")
+            if oldValue != isRecordingAudioOverlay {
+                DebugLogger.log("isRecordingAudioForOverlay changed from \(oldValue) to \(isRecordingAudioOverlay)")
             }
         }
     }
-     var isDraggingInCancelZoneOverlay: Bool = false {
+     var isDraggingInCancelOverlay: Bool = false {
         didSet {
-            if oldValue != isDraggingInCancelZoneOverlay {
-                DebugLogger.log("isDraggingInCancelZoneOverlay changed from \(oldValue) to \(isDraggingInCancelZoneOverlay)")
+            if oldValue != isDraggingInCancelOverlay {
+                DebugLogger.log("isDraggingInCancelZoneOverlay changed from \(oldValue) to \(isDraggingInCancelOverlay)")
             }
         }
     }
     // ADD this for "Convert to Text" zone:
-     var isDraggingToConvertToTextZoneOverlay: Bool = false {
+     var isDraggingToTextOverlay: Bool = false {
         didSet {
-            if oldValue != isDraggingToConvertToTextZoneOverlay {
-                 DebugLogger.log("isDraggingToConvertToTextZoneOverlay changed to \(isDraggingToConvertToTextZoneOverlay)")
+            if oldValue != isDraggingToTextOverlay {
+                 DebugLogger.log("isDraggingToConvertToTextZoneOverlay changed to \(isDraggingToTextOverlay)")
             }
         }
     }
@@ -140,12 +146,7 @@ final class InputViewModel {
     }
 
     private var saveEditingClosure: ((String) -> Void)?
-    // For monitoring transcriber activity
-    var transcriberIsRecordingSubscription: AnyCancellable?
-    var transcriberRmsLevelSubscription: AnyCancellable?
-    var transcriberDurationTimer: Timer?
-    var transcriberRecordingStartTime: Date?
-
+    
     func onStart() {
         DebugLogger.log("onStart called. Current state: \(state)")
 //        subscribeValidation()
@@ -156,9 +157,9 @@ final class InputViewModel {
     func onStop() {
         DebugLogger.log("onStop called.")
         subscriptions.removeAll()
-        if isRecordingAudioForOverlay { isRecordingAudioForOverlay = false }
-        if isDraggingInCancelZoneOverlay { isDraggingInCancelZoneOverlay = false }
-        if isDraggingToConvertToTextZoneOverlay { isDraggingToConvertToTextZoneOverlay = false }
+        if isRecordingAudioOverlay { isRecordingAudioOverlay = false }
+        if isDraggingInCancelOverlay { isDraggingInCancelOverlay = false }
+        if isDraggingToTextOverlay { isDraggingToTextOverlay = false }
         if weChatRecordingPhase != .idle { weChatRecordingPhase = .idle } // Ensure reset on stop
     }
 
@@ -176,8 +177,8 @@ final class InputViewModel {
             self.transcribedText = ""
             self.asrErrorMessage = nil
             self.weChatRecordingPhase = .idle
-            self.isDraggingInCancelZoneOverlay = false
-            self.isDraggingToConvertToTextZoneOverlay = false
+            self.isDraggingInCancelOverlay = false
+            self.isDraggingToTextOverlay = false
             self.state = .empty
 //            self.subscribeValidation()
             DebugLogger.log("States after reset: mainState=\(self.state), weChatPhase=\(self.weChatRecordingPhase)")
@@ -191,9 +192,7 @@ final class InputViewModel {
                 DebugLogger.log("Send: Transcriber (Hold) was active. Setting intent to .sendAudioOnly and stopping transcriber.")
                 self.currentRecordingIntent = .sendAudioOnly // Set the intent
                 await self.transcriber.stopRecording() // Stop the transcriber
-                // The transcriber's completion handler (modified in step 2) will run.
-                // It will populate self.attachments.recording and set self.state = .hasRecording.
-                // It will *not* set weChatRecordingPhase to .asrCompleteWithText due to the .sendAudioOnly intent.
+                
             } else if self.state == .isRecordingTap && self.weChatRecordingPhase == .recording { // Simple recorder from tap-lock
                 DebugLogger.log("Send: Simple Recorder (Tap) was active. Stopping simple recorder.")
                 let simpleRecResult = await recorder.stopRecording()
@@ -356,8 +355,8 @@ final class InputViewModel {
                     self.isEditingASRText = false
                     self.state = .empty // General state
                     self.weChatRecordingPhase = .idle // WeChat specific phase
-                    self.isDraggingInCancelZoneOverlay = false // UI state for drag zone
-                    self.isDraggingToConvertToTextZoneOverlay = false // UI state for drag zone
+                    self.isDraggingInCancelOverlay = false // UI state for drag zone
+                    self.isDraggingToTextOverlay = false // UI state for drag zone
                     self.currentRecordingIntent = .none // Reset recording intent
                     DebugLogger.log(".deleteRecord: Cleanup complete. All states reset.")
                 }

@@ -255,7 +255,7 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                     }
                 }
             
-            if inputViewModel.isRecordingAudioForOverlay {
+            if inputViewModel.isRecordingAudioOverlay {
                 WeChatRecordingOverlayView(
                     inputViewModel: inputViewModel,
                     inputBarHeight: inputViewSize.height, // <-- PASS THE HEIGHT
@@ -411,7 +411,7 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
             }
         }
         // Apply conditional bottom padding using the measured height
-        .padding(.bottom, inputViewModel.isRecordingAudioForOverlay ? measuredVoiceOverlayBottomHeight : 0)
+        .padding(.bottom, inputViewModel.isRecordingAudioOverlay ? measuredVoiceOverlayBottomHeight : 0)
         .animation(.easeInOut(duration: 0.25), value: measuredVoiceOverlayBottomHeight)
         
     }
