@@ -149,6 +149,9 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
     @State private var inputStyle: InputBarStyle = .default
     // MARK: - Variables for Pushing Content Up with PreferenceKey
     @State private var measuredVoiceOverlayBottomHeight: CGFloat = 0
+        
+    // New state to control main UI visibility when ASR editing overlay is active
+    @State private var isASREditingOverlayActive: Bool = false
     
     public init(messages: [Message],
                 chatType: ChatType = .conversation,
@@ -173,10 +176,12 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
     public var body: some View {
         
         ZStack { // Root ZStack for layering
+            
+//            if !isASREditingOverlayActive { // Conditionally show the main chat UI
             mainView
+                .opacity(isASREditingOverlayActive && inputViewModel.isRecordingAudioOverlay ? 0 : 1)
                 .background(chatBackground())
                 .environmentObject(keyboardState)
-
                 .fullScreenCover(isPresented: $viewModel.fullscreenAttachmentPresented) {
                     let attachments = sections.flatMap { section in section.rows.flatMap { $0.message.attachments } }
                     let index = attachments.firstIndex { $0.id == viewModel.fullscreenAttachmentItem?.id }
@@ -195,24 +200,24 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                         .ignoresSafeArea()
                     }
                 }
-            .onAppear() {
-                if isGiphyAvailable() {
-                    if let giphyKey = giphyConfig.giphyKey {
-                        if !giphyConfigured {
-                            giphyConfigured = true
-                            Giphy.configure(apiKey: giphyKey)
+                .onAppear() {
+                    if isGiphyAvailable() {
+                        if let giphyKey = giphyConfig.giphyKey {
+                            if !giphyConfigured {
+                                giphyConfigured = true
+                                Giphy.configure(apiKey: giphyKey)
+                            }
+                        } else {
+                            print("WARNING: giphy key not provided, please pass a key using giphyConfig")
                         }
-                    } else {
-                        print("WARNING: giphy key not provided, please pass a key using giphyConfig")
                     }
                 }
-            }
-            .onChange(of: selectedMedia) {
-                if let giphyMedia = selectedMedia {
-                    inputViewModel.attachments.giphyMedia = giphyMedia
-                    inputViewModel.send()
+                .onChange(of: selectedMedia) {
+                    if let giphyMedia = selectedMedia {
+                        inputViewModel.attachments.giphyMedia = giphyMedia
+                        inputViewModel.send()
+                    }
                 }
-            }
                 .sheet(isPresented: $inputViewModel.showGiphyPicker) {
                     if giphyConfig.giphyKey != nil {
                         GiphyEditorView(
@@ -237,7 +242,7 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                     )
                     .environmentObject(globalFocusState)
                 }
-                // ---> ADD THIS MODIFIER <---
+            // ---> ADD THIS MODIFIER <---
                 .onChange(of: keyboardState.isShown) { _, isShown in
                     if isShown && !isScrolledToBottom {
                         // Post the notification to trigger the scroll
@@ -254,6 +259,7 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                         globalFocusState.focus = nil
                     }
                 }
+//            }
             
             if inputViewModel.isRecordingAudioOverlay {
                 WeChatRecordingOverlayView(
@@ -261,6 +267,8 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                     inputBarHeight: inputViewSize.height, // <-- PASS THE HEIGHT
                     localization: localization
                 )
+                .environmentObject(keyboardState) // **THIS IS THE FIX** - Inject KeyboardState
+                .environmentObject(globalFocusState) // Also pass globalFocusState if needed by overlay
                 .zIndex(10)
                 .onPreferenceChange(VoiceOverlayBottomAreaHeightPreferenceKey.self) { height in
                     // Ensure this update happens on the main thread if it might be triggered from a background one
@@ -271,6 +279,24 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                         }
                     }
                 }
+            }
+        }
+        .onChange(of: inputViewModel.editingASRTextCount) { old, newValue in
+            
+            if newValue == 1 {
+                withAnimation(.easeInOut(duration: 0.2)) { // Optional animation
+                    self.isASREditingOverlayActive = true
+                }
+            }
+            if newValue == 0 {
+                DebugLogger.log("editingASRTextCount changed from \(old) to \(newValue)")
+                self.isASREditingOverlayActive = false
+            }
+            
+            if newValue % 2 == 1  {
+                DebugLogger.log("ChatView: ASR Editing Overlay is now ACTIVE. Hiding main chat list.")
+            } else {
+                DebugLogger.log("ChatView: ASR Editing Overlay is now INACTIVE. Showing main chat list.")
             }
         }
     }
@@ -577,7 +603,8 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
             releaseToCancelText: String(localized: "Release to cancel", bundle: .module),
             convertToTextButton: String(localized: "EN", bundle: .module), // <<<< ADDED THIS LINE,
             tapToEditText: String(localized: "Tap the bubble to edit the text", bundle: .module), // New
-            sendVoiceButtonText: String(localized: "Send Voice", bundle: .module) // New
+            sendVoiceButtonText: String(localized: "Send Voice", bundle: .module), // New
+            unableToRecognizeWordsText: String(localized: "Unable to recognize words", bundle: .module) // New
         )
     }
 }

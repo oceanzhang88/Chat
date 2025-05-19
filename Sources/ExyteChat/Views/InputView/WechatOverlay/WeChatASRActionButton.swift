@@ -10,7 +10,7 @@ struct WeChatASRActionButton: View {
     // These are smaller than the drag-target buttons
     private let iconSize: CGFloat = 22 // Smaller icon
     private let labelFontSize: CGFloat = 11 // Smaller label
-    private let buttonWidth: CGFloat = 70 // Adjusted width for a more compact layout
+    private let buttonWidth: CGFloat = 60 // Adjusted width for a more compact layout
 
     var body: some View {
         Button(action: action) {

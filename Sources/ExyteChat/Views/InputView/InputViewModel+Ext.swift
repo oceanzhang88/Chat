@@ -15,22 +15,91 @@ import Speech
 // Transcriber
 extension InputViewModel {
 
+//    func startEditingASRText() {
+//        // Ensure we are in a state where editing makes sense
+//        guard case .asrCompleteWithText = self.weChatRecordingPhase, self.asrErrorMessage == nil else {
+//            DebugLogger.log("startEditingASRText: Not in a valid state to edit or ASR had an error.")
+//            return
+//        }
+//
+//        self.text = self.transcribedText // Populate the main input field
+//        self.isEditingASRTextInOverlay = true
+//        // self.attachments.recording = nil // Decide: Do we discard voice immediately on edit, or on send of text?
+//                                        // Let's discard on send of text for now, to allow user to still send voice if they cancel edit.
+//        self.weChatRecordingPhase = .idle // This will hide the WeChatRecordingOverlayView
+//
+//        DebugLogger.log("startEditingASRText: Switched to editing. Text: \(self.text)")
+//        // Notify WeChatInputView to switch to text mode and focus
+//        NotificationCenter.default.post(name: .switchToTextInputAndFocus, object: self.inputFieldId)
+//    }
+    
+    @MainActor
     func startEditingASRText() {
-        // Ensure we are in a state where editing makes sense
-        guard case .asrCompleteWithText = self.weChatRecordingPhase, self.asrErrorMessage == nil else {
-            DebugLogger.log("startEditingASRText: Not in a valid state to edit or ASR had an error.")
+        guard case .asrCompleteWithText(let textToShow) = self.weChatRecordingPhase, self.asrErrorMessage == nil else {
+            DebugLogger.log("startEditingASRTextInOverlay: Not in .asrCompleteWithText phase or ASR had an error.")
             return
         }
-
-        self.text = self.transcribedText // Populate the main input field
-        self.isEditingASRText = true
-        // self.attachments.recording = nil // Decide: Do we discard voice immediately on edit, or on send of text?
-                                        // Let's discard on send of text for now, to allow user to still send voice if they cancel edit.
-        self.weChatRecordingPhase = .idle // This will hide the WeChatRecordingOverlayView
-
-        DebugLogger.log("startEditingASRText: Switched to editing. Text: \(self.text)")
-        // Notify WeChatInputView to switch to text mode and focus
-//        NotificationCenter.default.post(name: .switchToTextInputAndFocus, object: self.inputFieldId)
+        self.text = textToShow // Populate the main input field
+        if self.editingASRTextCount == 0 {
+            self.currentlyEditingASRText = textToShow // Initialize editing text
+        }
+        self.isEditingASRTextInOverlay = true      // Set the flag
+        self.editingASRTextCount += 1              
+        DebugLogger.log("startEditingASRTextInOverlay: Edit mode enabled. Initial text: \"\(textToShow)\". Requesting focus for overlay editor.")
+        self.isASROverlayEditorFocused = true       // Request focus
+    }
+    
+    @MainActor
+    func confirmASREditAndSend() {
+        // Use the text from currentlyEditingASRText
+        self.text = self.currentlyEditingASRText
+        self.attachments.recording = nil // Discard original voice
+        self.transcribedText = self.currentlyEditingASRText // Update this for consistency
+        
+        DebugLogger.log("confirmASREditAndSend: Text set to \"\(self.text)\". Original voice discarded. Preparing to send.")
+        
+        // Reset states and send
+        self.isEditingASRTextInOverlay = false
+        self.editingASRTextCount = 0
+        self.isASROverlayEditorFocused = false
+        self.weChatRecordingPhase = .idle // This will hide the overlay
+        send() // Calls didSendMessage and then reset()
+    }
+    
+    // This action is called from BottomControlsView when "Cancel" is tapped
+    // or from WeChatRecordingOverlayView when tapping the background during edit.
+    @MainActor
+    func endASREditSession(discardChanges: Bool = false) {
+        DebugLogger.log("endASROverlayEditSession called. Discard changes: \(discardChanges)")
+        isASROverlayEditorFocused = false // This should trigger the TextEditor to lose focus
+        isEditingASRTextInOverlay = false // Explicitly exit editing mode
+        
+        if discardChanges {
+            // If discarding, revert currentlyEditingASRText to the original transcribed text
+            // This is if the user "cancels" the edit but not the whole ASR result.
+            // Your current "Cancel" button calls .deleteRecord which is more destructive.
+            // This function is more for when focus is lost.
+            if case .asrCompleteWithText(let originalText) = self.weChatRecordingPhase {
+                currentlyEditingASRText = originalText
+            }
+        } else {
+            // If not discarding (e.g. focus lost but might re-focus),
+            // currentlyEditingASRText retains its value for now.
+            // The send action will use currentlyEditingASRText if isEditingASRTextInOverlay was true.
+        }
+    }
+    
+    // If user taps "Send Voice" button in BottomControlsView while editing ASR (or just viewing ASR)
+    @MainActor
+    func sendVoiceFromASRResult() {
+        DebugLogger.log("sendVoiceFromASROverlay: Sending original voice.")
+        // Text is ignored, only the recording is sent.
+        self.text = "" // Clear any potentially edited text if we're sending voice.
+        self.isEditingASRTextInOverlay = false
+        self.isASROverlayEditorFocused = false
+        // The self.attachments.recording should still hold the original recording
+        self.weChatRecordingPhase = .idle
+        send() // send() will pick up self.attachments.recording
     }
 }
 
@@ -122,15 +191,37 @@ extension InputViewModel {
                             }
                             
                             if self.currentRecordingIntent == .convertToText {
-                                self.weChatRecordingPhase = .asrCompleteWithText(finalText)
-                                DebugLogger.log("Transcriber finished with intent .convertToText. Phase: asrCompleteWithText. Text: \(finalText)")
+                                if let error = await self.transcriber.error { // Check for transcriber error first
+                                    self.asrErrorMessage = error.localizedDescription // Or a user-friendly message
+                                    self.transcribedText = ""
+                                    self.weChatRecordingPhase = .asrCompleteWithText("")
+                                    DebugLogger.log("Transcriber finished with intent .convertToText but with an error. Phase: asrCompleteWithText(\"\"). Error: \(error.localizedDescription)")
+                                } else if finalText.isEmpty {
+                                    self.asrErrorMessage = "100" // Example, make this localizable
+                                    self.transcribedText = ""
+                                    self.weChatRecordingPhase = .asrCompleteWithText("")
+                                    DebugLogger.log("Transcriber finished with intent .convertToText but no text recognized. Phase: asrCompleteWithText(\"\").")
+                                } else {
+                                    self.transcribedText = finalText
+                                    self.asrErrorMessage = nil
+                                    self.weChatRecordingPhase = .asrCompleteWithText(finalText)
+                                    DebugLogger.log("Transcriber finished with intent .convertToText. Phase: asrCompleteWithText. Text: \(finalText)")
+                                }
                             } else if self.currentRecordingIntent == .sendAudioOnly {
                                 // For sendAudioOnly, the state is already .hasRecording (if audio is valid).
                                 // The weChatRecordingPhase will be reset to .idle by the send() -> sendMessage() -> reset() flow.
                                 // No specific phase change needed here, as send() will take over.
                                 DebugLogger.log("Transcriber finished with intent .sendAudioOnly. State should be .hasRecording.")
                             } else { // .none (e.g., transcriber stopped due to silence)
-                                self.weChatRecordingPhase = .asrCompleteWithText(finalText) // Default to showing ASR results
+                                if finalText.isEmpty {
+                                    self.asrErrorMessage = "100" // Or a generic "No speech detected"
+                                    self.transcribedText = ""
+                                    self.weChatRecordingPhase = .asrCompleteWithText("")
+                                } else {
+                                    self.transcribedText = finalText
+                                    self.asrErrorMessage = nil
+                                    self.weChatRecordingPhase = .asrCompleteWithText(finalText)
+                                }
                                 DebugLogger.log("Transcriber finished with intent .none. Phase: asrCompleteWithText. Text: \(finalText)")
                             }
                             self.currentRecordingIntent = .none // Reset intent for the next operation

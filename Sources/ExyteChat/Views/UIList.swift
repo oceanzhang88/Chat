@@ -4,11 +4,6 @@
 
 import SwiftUI
 
-public extension Notification.Name {
-    static let onScrollToBottom = Notification.Name("onScrollToBottom")
-    static let onScrollToBottomWithoutAnimation = Notification.Name("onScrollToBottomWithoutAnimation")
-}
-
 struct UIList<MessageContent: View, InputView: View>: UIViewRepresentable {
 
     typealias MessageBuilderClosure = ChatView<MessageContent, InputView, DefaultMessageMenuAction>.MessageBuilderClosure

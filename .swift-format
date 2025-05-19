@@ -2,5 +2,9 @@
   "version": 1,
   "indentation": {
     "spaces": 4
-  }
+  },
+  "lineLength": 200,
+  "lineBreakBeforeControlFlowKeywords": false,
+  "lineBreakBeforeEachArgument": false,
+  "lineBreakBeforeEachGenericRequirement": false
 }

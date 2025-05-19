@@ -15,8 +15,6 @@ struct WeChatInputView: View {
     @GestureState private var isLongPressSustained: Bool = false
     // No need for @State showRecordingOverlay, viewModel.isRecordingAudioForOverlay handles it
 
-//    private let cancelDragThresholdY: CGFloat = -80
-
     @Environment(\.chatTheme) private var theme
 
     private let buttonIconSize: CGFloat = 28
@@ -62,11 +60,12 @@ struct WeChatInputView: View {
             NotificationCenter.default.addObserver(forName: .switchToTextInputAndFocus, object: nil, queue: .main) { notification in
                 guard let focusedFieldId = notification.object as? UUID, focusedFieldId == self.inputFieldId else { return }
                 
-                if self.viewModel.isEditingASRText {
+                if self.viewModel.isEditingASRTextInOverlay {
                     self.isVoiceMode = false // Switch to keyboard mode
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { // Brief delay for UI to update
                         self.isTextFocused = true // Focus the text field
                         self.globalFocusState.focus = .uuid(self.inputFieldId) // Ensure global focus state is also set
+                        DebugLogger.log("WeChatInputView: Switched to text mode and focused text field due to ASR edit.")
                     }
                 }
             }
@@ -145,9 +144,9 @@ struct WeChatInputView: View {
             .onChange(of: isTextFocused) { _, focused in
                 if focused {
                     globalFocusState.focus = .uuid(self.inputFieldId)
-                    viewModel.isEditingASRText = false // If user manually focuses, assume they are done with ASR edit intent
+                    //viewModel.isEditingASRText = false // If user manually focuses, assume they are done with ASR edit intent
                 } else {
-                    if globalFocusState.focus == .uuid(self.inputFieldId) && !viewModel.isEditingASRText { // Don't clear global focus if we are programmatically focusing due to ASR edit
+                    if globalFocusState.focus == .uuid(self.inputFieldId) && !viewModel.isEditingASRTextInOverlay { // Don't clear global focus if we are programmatically focusing due to ASR edit
                         // globalFocusState.focus = nil // This might be too aggressive if focus shifts to another element controlled by GlobalFocusState
                     }
                 }

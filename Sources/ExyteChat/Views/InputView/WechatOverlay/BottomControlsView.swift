@@ -9,7 +9,8 @@ import SwiftUI
 
 struct BottomControlsView: View {
     @Environment(\.chatTheme) private var theme
-    
+    @EnvironmentObject var keyboardState: KeyboardState // Make sure this is injected if not already
+
     var currentPhase: WeChatRecordingPhase
     var localization: ChatLocalization
     var inputViewModel: InputViewModel
@@ -42,17 +43,28 @@ struct BottomControlsView: View {
         }
         return arcAreaHeight
     }
+    
+    // Determine if the arc should be visually present and contribute to layout
+    private var showArc: Bool {
+        // Hide arc when ASR result is shown AND keyboard is active (editing)
+        if case .asrCompleteWithText = currentPhase, keyboardState.isShown, inputViewModel.isEditingASRTextInOverlay {
+            return false
+        }
+        // Also, ensure the arc is not shown if the phase itself implies no arc (original logic)
+        if case .asrCompleteWithText = currentPhase { // If it's ASR complete, the arc is generally replaced or hidden
+            return true
+        }
+        return true
+    }
 
 
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 0) {
-                Spacer()
+//                Spacer()
                 
                 HStack(alignment: .center, spacing: 0) {
                     if case .asrCompleteWithText = currentPhase {
-                        Spacer()
-
                         WeChatASRActionButton(
                             iconSystemName: "arrow.uturn.backward",
                             label: localization.cancelButtonText,
@@ -60,25 +72,18 @@ struct BottomControlsView: View {
                                 inputViewModel.inputViewAction()(.deleteRecord)
                             }
                         )
-                        
                         Spacer()
-                        
                         WeChatASRActionButton(
                             iconSystemName: "waveform",
                             label: localization.sendVoiceButtonText,
                             action: {
-                                inputViewModel.text = "" // Clear text input
-                                inputViewModel.inputViewAction()(.send) // Send will pick up the recording
+                                inputViewModel.sendVoiceFromASRResult() // Send will pick up the recording
                             }
                         )
-                        
                         Spacer()
-                        
                         // Send Text (Checkmark) Button (WeChat Style)
                         Button(action: {
-                            inputViewModel.text = inputViewModel.transcribedText
-                            inputViewModel.attachments.recording = nil
-                            inputViewModel.inputViewAction()(.send)
+                            inputViewModel.confirmASREditAndSend()
                         }) {
                             ZStack {
                                 Circle()
@@ -92,9 +97,10 @@ struct BottomControlsView: View {
                         }
                         .buttonStyle(PlainButtonStyle())
                         .frame(width: 80) // Consistent width with other buttons for spacing
-
-                        Spacer()
-
+                        // Add .disabled modifier
+                        .disabled(
+                            (inputViewModel.asrErrorMessage != nil) // Disabled if error
+                        )
                     } else {
                         // Buttons for IMG_0110.jpg (Recording/Dragging)
                         OverlayButton(
@@ -119,7 +125,6 @@ struct BottomControlsView: View {
                             return Color.yellow
                         })
                         
-
                         Spacer()
 
                         OverlayButton(
@@ -155,24 +160,21 @@ struct BottomControlsView: View {
             }
             .frame(height: controlsContentHeight)
             
-                // Arc Background Shape
-                ZStack {
-                    ArcBackgroundShape(sagitta: arcSagitta)
-                        .fill(arcBackgroundColor())
-                        .shadow(color: Color.black.opacity(0.2), radius: 5, y: -2)
-
-                    Image(systemName: "radiowaves.right") // Changed icon
-                        .font(.system(size: 22, weight: .light))
-                        .foregroundColor(Color(white: 0.4).opacity(0.7))
-                        .offset(y: arcSagitta - (arcAreaHeight / 2.5) - 5) // Adjusted offset
-                }
-                .frame(height: arcAreaHeight)
-                .opacity(currentArcHeight > 0 ? 1 : 0)    
-            
-            
+            ZStack {
+                ArcBackgroundShape(sagitta: arcSagitta)
+                    .fill(arcBackgroundColor())
+                    .shadow(color: Color.black.opacity(0.2), radius: 5, y: -2)
+                
+                Image(systemName: "radiowaves.right") // Changed icon
+                    .font(.system(size: 22, weight: .light))
+                    .foregroundColor(Color(white: 0.4).opacity(0.7))
+                    .offset(y: arcSagitta - (arcAreaHeight / 2.5) - 5) // Adjusted offset
+            }
+            .frame(height: showArc ? arcAreaHeight : 0)
+            .opacity(currentArcHeight > 0 ? 1 : 0)
         }
         .background(GeometryReader { geometry in
-            Color.clear.preference(key: VoiceOverlayBottomAreaHeightPreferenceKey.self, value: chatPushUpHeight)
+            Color.clear.preference(key: VoiceOverlayBottomAreaHeightPreferenceKey.self, value: showArc ? chatPushUpHeight : 0)
         })
     }
     

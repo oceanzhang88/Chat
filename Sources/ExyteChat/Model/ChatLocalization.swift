@@ -19,6 +19,7 @@ public struct ChatLocalization: Hashable {
     public var convertToTextButton: String
     public var tapToEditText: String // New
     public var sendVoiceButtonText: String // New
+    public var unableToRecognizeWordsText: String // New
     
     public init(
         inputPlaceholder: String,
@@ -33,7 +34,8 @@ public struct ChatLocalization: Hashable {
         releaseToCancelText: String, // <<<< ADDED THIS PARAMETER,
         convertToTextButton: String, // Add as parameter
         tapToEditText: String, // New
-        sendVoiceButtonText: String // New
+        sendVoiceButtonText: String, // New
+        unableToRecognizeWordsText: String, // New
     ) {
         self.inputPlaceholder = inputPlaceholder
         self.signatureText = signatureText
@@ -48,5 +50,6 @@ public struct ChatLocalization: Hashable {
         self.convertToTextButton = convertToTextButton
         self.tapToEditText = tapToEditText // Initialize
         self.sendVoiceButtonText = sendVoiceButtonText // Initialize
+        self.unableToRecognizeWordsText = unableToRecognizeWordsText
     }
 }

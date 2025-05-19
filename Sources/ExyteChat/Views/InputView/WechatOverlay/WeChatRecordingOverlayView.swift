@@ -5,6 +5,8 @@ import SwiftUI
 struct WeChatRecordingOverlayView: View {
     var inputViewModel: InputViewModel
     @Environment(\.chatTheme) private var theme
+    @EnvironmentObject var keyboardState: KeyboardState // Keep this
+//    @Environment(\.safeAreaInsets) var safeAreaInsets // Get safe area insets
     
     // State to hold the dynamically calculated height from WechatRecordingIndicator
 //    @State private var indicatorContentHeight: CGFloat = 70 // Initial default
@@ -58,13 +60,35 @@ struct WeChatRecordingOverlayView: View {
         }
     }
     
+    private var showControlsAboveKeyboard: Bool {
+        inputViewModel.isEditingASRTextInOverlay &&
+        keyboardState.isShown &&
+        (
+            {
+                if case .asrCompleteWithText = inputViewModel.weChatRecordingPhase { return true }
+                return false
+            }()
+        )
+    }
+    // Define a small, fixed padding for compactness
+    private let compactPadding: CGFloat = 8 // Adjust as needed
+    
     var body: some View {
         ZStack(alignment: .bottom) {
-            DimmedGradientBackgroundView()
+            DimmedGradientBackgroundView().onTapGesture {
+                // If editing ASR text and user taps background, dismiss keyboard
+                DebugLogger.log("WeChatRecordingOverlayView: Background tapped.")
+                if inputViewModel.isEditingASRTextInOverlay {
+                    inputViewModel.endASREditSession(discardChanges: false)
+                }
+            }
+            .edgesIgnoringSafeArea(.all)
             
             VStack(spacing: 0) {
-                Spacer()
-                Spacer()
+                if !showControlsAboveKeyboard { // If keyboard NOT shown with controls, allow more flexible spacing
+                    Spacer() // Pushes ASR bubble down
+                    Spacer()
+                }
                 
                 // Conditional content based on phase
                 Group {
@@ -89,24 +113,32 @@ struct WeChatRecordingOverlayView: View {
                         .transition(.opacity.combined(with: .scale(scale: 1.0)))
                     }
                 }
-                .padding(.bottom, 20)  // Some space above the bottom controls
+//                .padding(.bottom, 20)  // Some space above the bottom controls
                 
-                Spacer()
-                
+                if !showControlsAboveKeyboard { // If keyboard NOT shown with controls, allow more flexible spacing
+                    Spacer() // Pushes ASR bubble down
+                }
+            
                 BottomControlsView(
                     currentPhase: inputViewModel.weChatRecordingPhase,
                     localization: localization,
                     inputViewModel: inputViewModel,
-                    inputBarHeight: inputBarHeight,
-                    onCancel: { // For X button during recording/dragging to cancel
-                        inputViewModel.inputViewAction()(.deleteRecord)
-                    },
-                    onConvertToText: {
-                        DebugLogger.log("BottomControlsView: onConvertToText (direct tap) placeholder.")
-                        /* Direct tap on "En" if needed, usually drag-release */
-                    }
+                    inputBarHeight: inputBarHeight
                 )
+                { // For X button during recording/dragging to cancel
+                    inputViewModel.inputViewAction()(.deleteRecord)
+                }
+                onConvertToText: {
+                    DebugLogger.log("BottomControlsView: onConvertToText (direct tap) placeholder.")
+                    /* Direct tap on "En" if needed, usually drag-release */
+                }
+                // Adjust padding for keyboard ONLY when editing ASR text in the overlay
+                .padding(.bottom, showControlsAboveKeyboard ? keyboardState.keyboardFrame.height * 0.9 : 0)
+//                .animation(.easeInOut(duration: 0.25), value: showControlsAboveKeyboard)
+//                .animation(.easeInOut(duration: 0.25), value: keyboardState.keyboardFrame.height) // Also animate keyboard height changes
+
             }
+            .padding(.top, UIApplication.safeArea.top + compactPadding)
         }
         .edgesIgnoringSafeArea(.all) // Dimmed background covers all
         //        .onReceive(timer) { _ in
@@ -190,7 +222,8 @@ struct WeChatRecordingOverlayView_Previews: PreviewProvider {
             releaseToCancelText: "Release to cancel",
             convertToTextButton: "En",
             tapToEditText: "tapToEditText",
-            sendVoiceButtonText: "send"
+            sendVoiceButtonText: "send",
+            unableToRecognizeWordsText: "Unable to recognize words"
             
         )
         
