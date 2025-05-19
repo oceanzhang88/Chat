@@ -14,24 +14,59 @@ import Speech
 
 // Transcriber
 extension InputViewModel {
-
-//    func startEditingASRText() {
-//        // Ensure we are in a state where editing makes sense
-//        guard case .asrCompleteWithText = self.weChatRecordingPhase, self.asrErrorMessage == nil else {
-//            DebugLogger.log("startEditingASRText: Not in a valid state to edit or ASR had an error.")
-//            return
-//        }
-//
-//        self.text = self.transcribedText // Populate the main input field
-//        self.isEditingASRTextInOverlay = true
-//        // self.attachments.recording = nil // Decide: Do we discard voice immediately on edit, or on send of text?
-//                                        // Let's discard on send of text for now, to allow user to still send voice if they cancel edit.
-//        self.weChatRecordingPhase = .idle // This will hide the WeChatRecordingOverlayView
-//
-//        DebugLogger.log("startEditingASRText: Switched to editing. Text: \(self.text)")
-//        // Notify WeChatInputView to switch to text mode and focus
-//        NotificationCenter.default.post(name: .switchToTextInputAndFocus, object: self.inputFieldId)
-//    }
+    
+    // Add this new method
+    @MainActor
+    func processLanguageChangeConfirmation() async {
+        // The language in self.transcriber (DefaultTranscriberPresenter) has already been updated
+        // by its own changeLanguage(toLocale:) method, which also re-initialized the Transcriber actor.
+        // That method also handles calling reTranscribeAudio if appropriate (i.e., if not live recording and lastRecordingURL exists).
+        
+        // Here, we primarily need to update the InputViewModel's state based on the presenter's new state.
+        
+        DebugLogger.log("InputViewModel: Processing language change confirmation.")
+        
+        // Update UI to reflect potential re-transcription start (if presenter initiated it)
+        // or to clear old results if re-transcription won't happen.
+        
+        // Show "processing" if the presenter is now re-transcribing.
+        // This requires adding an `isReTranscribing` state to DefaultTranscriberPresenter or inferring.
+        // For now, we'll directly update based on the presenter's `transcribedText` and `error` after it attempts re-transcription.
+        
+        if let currentError = self.transcriber.error {
+            self.asrErrorMessage = currentError.localizedDescription
+            self.transcribedText = "" // Clear previous text
+            // Update phase to show the error or an empty state.
+            // If asrErrorMessage is set, ASRResultView shows it.
+            self.weChatRecordingPhase = .asrCompleteWithText("") // Keep showing the bubble for the error
+            DebugLogger.log("InputViewModel: Re-transcription resulted in error: \(currentError.localizedDescription)")
+        } else {
+            let newText = self.transcriber.transcribedText // Get potentially new text from presenter
+            self.transcribedText = newText
+            self.currentlyEditingASRText = newText // Sync editing buffer
+            self.asrErrorMessage = nil // Clear any previous error message
+            
+            if self.attachments.recording?.url != nil { // If there was an audio to re-transcribe
+                // If newText is empty after re-transcription, it might mean no speech or unmatchable.
+                if newText.isEmpty {
+                    self.asrErrorMessage = "100" // "Unable to recognize words"
+                    self.weChatRecordingPhase = .asrCompleteWithText("")
+                    DebugLogger.log("InputViewModel: Re-transcription resulted in empty text.")
+                } else {
+                    self.weChatRecordingPhase = .asrCompleteWithText(newText)
+                    DebugLogger.log("InputViewModel: Re-transcription successful. New text: \(newText)")
+                }
+            } else {
+                // No audio was re-transcribed (e.g., language changed before any recording).
+                // Just ensure UI is clean for the new language.
+                self.weChatRecordingPhase = .idle // Or .asrCompleteWithText("") if bubble should stay for some reason
+                DebugLogger.log("InputViewModel: Language changed, no audio processed. UI reset.")
+            }
+        }
+        
+        // The bubble height will be recalculated by WeChatRecordingOverlayView's .onChange(of: weChatRecordingPhase)
+        // or .onChange(of: transcribedText) in WechatRecordingIndicator.
+    }
     
     @MainActor
     func startEditingASRText() {
@@ -328,19 +363,6 @@ extension InputViewModel {
             // If self.attachments.recording exists, state should be .hasRecording (set by stopRecordAudio)
         }
     }
-
-//    func subscribeValidation() {
-//        $attachments.sink { [weak self] _ in self?.validateDraft() }.store(in: &subscriptions)
-//        $text.sink { [weak self] _ in self?.validateDraft() }.store(in: &subscriptions)
-//    }
-//
-//    func subscribeGiphyPicker() {
-//        $showGiphyPicker.sink { [weak self] value in if !value { self?.attachments.giphyMedia = nil } }.store(in: &subscriptions)
-//    }
-//
-//    func subscribePicker() {
-//        $showPicker.sink { [weak self] value in if !value { self?.attachments.medias = [] } }.store(in: &subscriptions)
-//    }
 
     func subscribeRecordPlayer() {
         Task { @MainActor in

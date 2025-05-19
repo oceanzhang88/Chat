@@ -85,8 +85,16 @@ struct LanguageSelectionSheetView: View {
                 
                 Button { // OK Button
                     Task {
+                        // 1. This call now handles re-initializing the transcriber with the new locale
+                        //    AND attempts re-transcription of `lastRecordingURL` if applicable (and not live recording).
                         await inputViewModel.transcriber.changeLanguage(toLocale: tentativelySelectedLocale)
-                        inputViewModel.transcriber.currentLocale = tentativelySelectedLocale
+                        
+                        // 2. This call updates InputViewModel's state based on the outcome of presenter's changes.
+                        await inputViewModel.processLanguageChangeConfirmation()
+                        
+                        // 3. Update the presenter's currentLocale property if not already handled by changeLanguage.
+                        //    (It is handled by changeLanguage, so this might be redundant or for explicit state sync).
+                        // inputViewModel.transcriber.currentLocale = tentativelySelectedLocale // Redundant if changeLanguage sets it.
                     }
                     isPresented = false
                 } label: {

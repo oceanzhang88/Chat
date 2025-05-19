@@ -15,6 +15,8 @@ struct ASRResultView: View {
     // Let's have ASRResultView own it and VM requests it.
     @FocusState private var isTextEditorFocused: Bool
     
+    static let minTextEditorHeightStatic: CGFloat = ASRBubbleMetrics.resultViewMinTextEditorHeight
+    static let tipSizeStatic: CGSize = ASRBubbleMetrics.tipSize
     
     private let asrBubbleColor = Color(red: 130/255, green: 230/255, blue: 100/255)
     private let asrTextColor = Color.black.opacity(0.85)
@@ -37,7 +39,7 @@ struct ASRResultView: View {
     }
     
     var body: some View {
-        VStack(spacing: 5) {
+        VStack(spacing: ASRBubbleMetrics.resultViewInternalVStackSpacing) {
             
             // 1. Ellipsis Button (Language Change) - Placed above the bubble
 //            if !inputViewModel.isEditingASRTextInOverlay { // Show options only when not editing
@@ -57,29 +59,71 @@ struct ASRResultView: View {
             //    No major changes needed inside the bubble structure itself for this request.
             //    We just need to ensure the ZStack that *was* holding the button and bubble
             //    is now just focused on the bubble.
+            GeometryReader { bubbleContentGeo in
+                VStack(spacing: 0) { // Bubble content
+                    
+                    //                    textContentArea()
+                    //                        .padding(.horizontal, 16)
+                    //                        .padding(.vertical, 12)
+                    // The Group inside ScrollView will try to expand vertically.
+                    let textAreaVerticalPadding = ASRBubbleMetrics.totalInternalVerticalPadding
+                    // Height available for the text editor field or ScrollView content
+                    // This is the height of the bubble content area *before* tip padding for the shape.
+                    let contentFieldAvailableHeight = bubbleContentGeo.size.height - textAreaVerticalPadding
+                
+                    if let _ = inputViewModel.asrErrorMessage {
+                        Text("Error: \(errorLocalization)")
+                            .font(.system(size: 17, weight: .medium))
+                            .foregroundColor(theme.colors.statusError)
+                            .padding(.horizontal, ASRBubbleMetrics.horizontalPadding)
+                            .padding(.vertical, ASRBubbleMetrics.verticalPadding)
+                            .frame(minHeight: max(minTextEditorHeight, contentFieldAvailableHeight), alignment: .center)
+                    } else if inputViewModel.isEditingASRTextInOverlay {
+                        CustomTextEditor(text: $inputViewModel.currentlyEditingASRText)
+                            .font(.system(size: 17, weight: .medium))
+                            .foregroundColor(asrTextColor)
+                            .scrollContentBackground(.hidden)
+                            .padding(.horizontal, ASRBubbleMetrics.horizontalPadding)
+                            .padding(.vertical, ASRBubbleMetrics.verticalPadding)
+                            .frame(height: max(minTextEditorHeight, contentFieldAvailableHeight)) // Use calculated height
+                            .focused($isTextEditorFocused)
+                            .id("asrOverlayTextEditor")
+                    } else {
+                        ScrollView {
+                            Text(inputViewModel.currentlyEditingASRText.isEmpty ?
+                                 inputViewModel.transcribedText : inputViewModel.currentlyEditingASRText)
+                            .font(.system(size: 17, weight: .medium))
+                            .foregroundColor(asrTextColor)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            // Min height for text ensures it doesn't collapse too much if short
+                            .frame(minHeight: minTextEditorHeight)
+                        }
+                        .padding(.horizontal, ASRBubbleMetrics.horizontalPadding)
+                        .padding(.vertical, ASRBubbleMetrics.verticalPadding)
+//                        .frame(height: max(minTextEditorHeight, contentFieldAvailableHeight)) // ScrollView takes the calculated height
+                    }
+                }
+//                        .padding(.horizontal, 16)
+//                        .padding(.vertical, 12)
+//                        // This frame modifier makes the content of the ScrollView expand to the ScrollView's available height.
+//                        .frame(minHeight: minTextEditorHeight, maxHeight: .infinity)
+                   
+                .padding(.bottom, ASRBubbleMetrics.tipHeightComponent)
+//                .frame(minHeight: minASRBubbleVisibleHeight)
+//                .frame(width: targetWidth)
+                .background(BubbleWithTipShape(cornerRadius: bubbleCornerRadius, tipSize: tipSize, tipPosition: tipPosition, tipOffsetPercentage: tipOffsetPercentage).fill(asrBubbleColor))
+                .clipShape(BubbleWithTipShape(cornerRadius: bubbleCornerRadius, tipSize: tipSize, tipPosition: tipPosition, tipOffsetPercentage: tipOffsetPercentage))
+                .shadow(color: Color.black.opacity(0.15), radius: 4, y: 2)
+                .onTapGesture {
+                    if !inputViewModel.isEditingASRTextInOverlay &&
+                        inputViewModel.asrErrorMessage == nil, // Check for error
+                       case .asrCompleteWithText(let text) = inputViewModel.weChatRecordingPhase
+                    { // Check if text is not empty
+                        inputViewModel.startEditingASRText()
+                    }
+                }
+            }
             
-            VStack(spacing: 0) { // Bubble content
-                ScrollView {
-                    textContentArea()
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                }
-                .frame(minHeight: minTextEditorHeight, maxHeight: maxTextEditorHeight)
-            }
-            .padding(.bottom, tipSize.height > 0 ? tipSize.height : 0)
-            .frame(minHeight: minASRBubbleVisibleHeight)
-            .frame(width: targetWidth)
-            .background(BubbleWithTipShape(cornerRadius: bubbleCornerRadius, tipSize: tipSize, tipPosition: tipPosition, tipOffsetPercentage: tipOffsetPercentage).fill(asrBubbleColor))
-            .clipShape(BubbleWithTipShape(cornerRadius: bubbleCornerRadius, tipSize: tipSize, tipPosition: tipPosition, tipOffsetPercentage: tipOffsetPercentage))
-            .shadow(color: Color.black.opacity(0.15), radius: 4, y: 2)
-            .onTapGesture {
-                if !inputViewModel.isEditingASRTextInOverlay &&
-                    inputViewModel.asrErrorMessage == nil, // Check for error
-                   case .asrCompleteWithText(let text) = inputViewModel.weChatRecordingPhase
-                { // Check if text is not empty
-                    inputViewModel.startEditingASRText()
-                }
-            }
             
             // 3. Helper Text (remains below the bubble)
             if !inputViewModel.isEditingASRTextInOverlay &&

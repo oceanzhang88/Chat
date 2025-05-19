@@ -5,11 +5,7 @@ struct WechatRecordingIndicator: View {
     @Environment(\.chatTheme) private var theme
     var inputViewModel: InputViewModel
 
-    // Height for non-ASR states (main waveform display)
-    private let baseWaveformIndicatorHeight: CGFloat = 70
-
     // ASR bubble properties
-    private let asrBubbleGreen = Color(red: 118 / 255, green: 227 / 255, blue: 80 / 255)
     private let minASRBubbleHeight: CGFloat = 100  // Min height for the entire ASR bubble
     private let maxASRBubbleHeight: CGFloat = 160  // Max height for the entire ASR bubble
 
@@ -32,7 +28,11 @@ struct WechatRecordingIndicator: View {
     private let dotAnimationTimer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
     @State private var dotCount: Int = 0
 
+    // Constants from ASRBubbleMetrics or local if truly specific
+    private let baseWaveformIndicatorHeight: CGFloat = 70 // For non-ASR states
+    private let asrBubbleGreen = Color(red: 118 / 255, green: 227 / 255, blue: 80 / 255)
     private let bubbleCornerRadius: CGFloat = 22
+
 
     private var currentPhase: WeChatRecordingPhase {
         inputViewModel.weChatRecordingPhase
@@ -89,23 +89,29 @@ struct WechatRecordingIndicator: View {
         }
     }
 
-    @State private var currentASRBubbleHeight: CGFloat
+//    @State private var currentASRBubbleHeight: CGFloat
 
     init(inputViewModel: InputViewModel) {
         self.inputViewModel = inputViewModel
         _displayWaveformData = State(initialValue: Array(repeating: visualMinBarRelativeHeight, count: defaultDesiredBarCount))
-        _currentASRBubbleHeight = State(initialValue: minASRBubbleHeight)
+//        _currentASRBubbleHeight = State(initialValue: minASRBubbleHeight)
     }
 
     var body: some View {
         ZStack {
             bubbleBackgroundShape
-                .frame(height: shouldDisplayASRContentArea ? currentASRBubbleHeight : baseWaveformIndicatorHeight)
+                .frame(height: shouldDisplayASRContentArea ? inputViewModel.currentASRBubbleHeight : baseWaveformIndicatorHeight)
             Group {
                 if shouldDisplayASRContentArea {
-                    asrContentWithBackground
+                    asrContentLayout
+                    // Crucially, ensure this content VSTACK is also constrained by the dynamic bubble height
+                    // and respects internal padding for the bubble shape itself.
+                        .frame(height: inputViewModel.currentASRBubbleHeight)
+                    // Clip the content to the bubble shape if it ever tries to overflow due to internal miscalculation.
+                        .clipShape(BubbleWithTipShape(cornerRadius: bubbleCornerRadius, tipSize: tipSize, tipPosition: tipPosition, tipOffsetPercentage: tipOffsetPercentage))
+
                 } else {
-                    mainWaveformWithBackground
+                    mainWaveformDisplay
                 }
             }
         }
@@ -113,20 +119,18 @@ struct WechatRecordingIndicator: View {
         .onAppear {
             updateWaveformDisplayDataLogic()
             if shouldDisplayASRContentArea {
-                updateASRBubbleHeight(for: inputViewModel.transcribedText, animated: false)
+                updateAndAnimateBubbleHeight()
             }
         }
-        .onChange(of: currentPhase) {
-            _,
-            newPhase in
+        .onChange(of: currentPhase) {_, newPhase in
             updateWaveformDisplayDataLogic()
             if newPhase == .draggingToConvertToText || newPhase == .processingASR {
-                updateASRBubbleHeight(for: inputViewModel.transcribedText, animated: true)
+                updateAndAnimateBubbleHeight()
             }
         }
         .onChange(of: inputViewModel.transcribedText) { _, newText in
             if shouldDisplayASRContentArea {
-                updateASRBubbleHeight(for: newText, animated: true)
+                updateAndAnimateBubbleHeight()
             }
         }
         .onReceive(dotAnimationTimer) { _ in
@@ -139,7 +143,7 @@ struct WechatRecordingIndicator: View {
                 processingDots = ""
             }
             if oldDots != processingDots && shouldDisplayASRContentArea {
-                updateASRBubbleHeight(for: inputViewModel.transcribedText, animated: true)
+                updateAndAnimateBubbleHeight()
             }
         }
         .onReceive(waveformTimer) { _ in
@@ -147,45 +151,8 @@ struct WechatRecordingIndicator: View {
         }
         // REMOVED: .onChange(of: displayWaveformData) that populated cornerIconDisplayData
     }
-
-    private func updateASRBubbleHeight(for text: String, animated: Bool) {
-        let intrinsicTextHeight = Self.calculateIntrinsicTextHeight(
-            for: text,
-            phase: currentPhase,
-            processingDots: processingDots,
-            constrainedByWidth: getASRBubbleContentWidth()
-        )
-
-        let contentHeight = intrinsicTextHeight + 6 + cornerIconAreaHeight
-        let bubbleChromeHeight = 10 + (tipSize.height + 10)
-        let calculatedTotalHeight = contentHeight + bubbleChromeHeight
-        let newHeight = max(minASRBubbleHeight, min(calculatedTotalHeight, maxASRBubbleHeight))
-
-        if animated {
-            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                currentASRBubbleHeight = newHeight
-            }
-        } else {
-            currentASRBubbleHeight = newHeight
-        }
-    }
-
-    private var mainWaveformWithBackground: some View {
-        mainWaveformDisplay
-            .padding(.horizontal, currentPhase == .draggingToCancel ? 10 : 20)
-            .padding(.top, 10)
-            .padding(.bottom, tipSize.height + 10)
-            .frame(height: baseWaveformIndicatorHeight)
-    }
-
-    private var asrContentWithBackground: some View {
-        asrContentLayout
-            .padding(.horizontal, 16)
-            .padding(.top, 10)
-            .padding(.bottom, tipSize.height + 10)
-            .frame(height: currentASRBubbleHeight)
-    }
-
+    
+    @ViewBuilder
     private var bubbleBackgroundShape: some View {
         BubbleWithTipShape(
             cornerRadius: bubbleCornerRadius, tipSize: tipSize,
@@ -211,6 +178,11 @@ struct WechatRecordingIndicator: View {
         .frame(maxHeight: maxBarHeightForMainWaveform)
 //        .animation(.easeInOut(duration: 0.15), value: displayWaveformData)
         .clipped()
+        // Padding for main waveform display inside its bubble
+        .padding(.horizontal, currentPhase == .draggingToCancel ? 10 : 20)
+        .padding(.top, ASRBubbleMetrics.indicatorTopChromePadding)
+        .padding(.bottom, ASRBubbleMetrics.tipHeightComponent + ASRBubbleMetrics.indicatorBottomChromePadding)
+        .frame(height: baseWaveformIndicatorHeight) 
     }
 
     @ViewBuilder
@@ -219,20 +191,60 @@ struct WechatRecordingIndicator: View {
             ScrollViewReader { scrollViewProxy in
                 ScrollView(.vertical, showsIndicators: true) {
                     textAndDotsDisplayView
-                        .padding(.vertical, 2)
+                    // Apply consistent padding HERE for the text content itself
+                        .padding(.horizontal, ASRBubbleMetrics.horizontalPadding)
+                        .padding(.vertical, ASRBubbleMetrics.verticalPadding)
                         .id("asrTextContentInsideIndicator")
                 }
-                .frame(maxHeight: maxASRBubbleHeight)
-                .onChange(of: inputViewModel.transcribedText) { _, _ in
-                    withAnimation {
-                        scrollViewProxy.scrollTo("asrTextContentInsideIndicator", anchor: .bottom)
+                .frame(maxHeight: .infinity)
+                .onChange(of: inputViewModel.transcribedText) { _, newText in
+                    let targetBubbleHeight = WechatRecordingIndicator.calculateDynamicASRBubbleHeight(
+                        forText: newText,
+                        phase: currentPhase, // Ensure 'currentPhase' is accessible here
+                        processingDots: processingDots, // Ensure 'processingDots' is accessible here
+                        viewModel: inputViewModel,
+                        indicatorWidth: currentIndicatorOverallWidth // Ensure 'currentIndicatorOverallWidth' is accessible
+                    )
+                    
+                    // Only scroll if the bubble's height is capped at the maximum.
+                    // This implies the content is overflowing, and the bubble cannot grow further.
+                    // A small tolerance is added for floating-point comparisons.
+                    if targetBubbleHeight >= ASRBubbleMetrics.maxOverallHeight - 0.1 {
+                        // Defer scroll slightly to allow height animation to start/settle.
+                        // This schedules the scroll for the next run loop pass.
+                        DispatchQueue.main.async {
+                            withAnimation { // Keep the scroll itself animated
+                                scrollViewProxy.scrollTo("asrTextContentInsideIndicator", anchor: .bottom)
+                            }
+                        }
+                    }
+                    // If targetBubbleHeight < maxOverallHeight, the bubble will grow,
+                    // and this growth should reveal the new text. No explicit scroll
+                    // is forced in this case, as it might conflict with the growth animation.
+                }
+                .onAppear { // Also scroll to bottom when the view first appears if there's text
+                    if !inputViewModel.transcribedText.isEmpty {
+                        DispatchQueue.main.async {
+                            // No animation needed on initial appear usually, but can be added.
+                            scrollViewProxy.scrollTo("asrTextContentInsideIndicator", anchor: .bottom)
+                        }
                     }
                 }
             }
-
-            cornerWaveformIcon  // This will now use displayWaveformData
-                .padding(.top, 6)
+            HStack {
+                Spacer()
+                cornerWaveformIcon  // This will now use displayWaveformData
+            }
+            .padding(.top, ASRBubbleMetrics.indicatorTextToIconSpacing)
+            .frame(height: ASRBubbleMetrics.indicatorCornerIconAreaHeight)
+            // Horizontal padding for the icon container to inset it from the bubble edge
+            .padding(.horizontal, ASRBubbleMetrics.horizontalPadding)
         }
+        // Padding for the entire content block (text + icon) inside the bubble shape,
+        // accounting for top chrome and making space for bottom chrome + tip.
+        .padding(.top, ASRBubbleMetrics.indicatorTopChromePadding)
+        .padding(.bottom, ASRBubbleMetrics.tipHeightComponent + ASRBubbleMetrics.indicatorBottomChromePadding)
+//        .padding(.horizontal, ASRBubbleMetrics.horizontalPadding) // Apply consistent horizontal padding
     }
 
     @ViewBuilder
@@ -274,8 +286,8 @@ struct WechatRecordingIndicator: View {
                 //                    .transition(.scale(scale: 0.5, anchor: .center) .combined(with: .opacity))
             }
         }
-        .frame(maxWidth: .infinity, alignment: .trailing)
-        .frame(height: cornerIconAreaHeight)
+//        .frame(maxWidth: .infinity, alignment: .trailing)
+//        .frame(height: cornerIconAreaHeight)
 //        .animation(.easeInOut(duration: 0.15), value: displayWaveformData.count)  // displayWaveformData.count will be 10 here
     }
 
@@ -378,40 +390,100 @@ struct WechatRecordingIndicator: View {
         }
     }
 
-    private func getASRBubbleContentWidth() -> CGFloat {
-        let bubbleHorizontalPadding = 16 * 2
-        let asrOverlayWidth = UIScreen.main.bounds.width * 0.9
-        return asrOverlayWidth - CGFloat(bubbleHorizontalPadding)
+    // Calculate the width for the text content area
+    private func getASRBubbleTextContentWidth(for phase: WeChatRecordingPhase, overlayWidth: CGFloat) -> CGFloat {
+        return overlayWidth - (ASRBubbleMetrics.horizontalPadding * 2)
     }
 
+    @MainActor
+    static func calculateDynamicASRBubbleHeight(
+        forText text: String,
+        phase: WeChatRecordingPhase,
+        processingDots: String,
+        viewModel: InputViewModel, // To access other relevant states if needed
+        indicatorWidth: CGFloat // The total width available for the indicator bubble
+    ) -> CGFloat {
+        
+        let textContentWidth = indicatorWidth - (ASRBubbleMetrics.horizontalPadding * 2) // Width available for text
+        
+        let effectiveText = text.isEmpty && (phase == .draggingToConvertToText || phase == .processingASR) ?
+        (processingDots.isEmpty ? " " : processingDots) : // Use dots if text is empty during processing
+        (text.isEmpty ? " " : text) // Use a space for measurement if text is truly empty, to get min height
+        
+        // Calculate the intrinsic height of the text content itself.
+        let intrinsicTextHeight = Self.calculateIntrinsicTextHeight(
+            for: effectiveText,
+            constrainedByWidth: textContentWidth
+        )
+        
+        // The ScrollView that contains the text has its own vertical padding.
+        // This padding needs to be added to the intrinsicTextHeight to get the total height
+        // required by the scrollable content area.
+        // ASRBubbleMetrics.verticalPadding is likely applied on top and bottom of the text within the ScrollView.
+        let scrollableContentHeight = intrinsicTextHeight + (ASRBubbleMetrics.verticalPadding * 2)
+        
+        // Now, calculate the core content height of the bubble, which includes the
+        // scrollable text area, spacing, and the corner waveform icon area.
+        let coreContentHeight = scrollableContentHeight + ASRBubbleMetrics.indicatorTextToIconSpacing + ASRBubbleMetrics.indicatorCornerIconAreaHeight
+        
+        // Finally, add the bubble's own chrome (overall padding and tip area height)
+        // to get the total calculated height for the bubble.
+        let bubbleChromeHeight = ASRBubbleMetrics.indicatorTopChromePadding + ASRBubbleMetrics.tipHeightComponent + ASRBubbleMetrics.indicatorBottomChromePadding
+        let calculatedTotalHeight = coreContentHeight + bubbleChromeHeight
+        
+        // Clamp the calculated height between the defined min and max overall heights for the bubble.
+        let newHeight = max(ASRBubbleMetrics.minOverallHeight, min(calculatedTotalHeight, ASRBubbleMetrics.maxOverallHeight))
+        
+        // For debugging:
+        // DebugLogger.log("BubbleHeightCalc: effectiveText='\(effectiveText.prefix(20))', intrinsicTextH=\(intrinsicTextHeight), scrollableContentH=\(scrollableContentHeight), coreContentH=\(coreContentHeight), totalCalcH=\(calculatedTotalHeight), finalH=\(newHeight)")
+        
+        return newHeight
+    }
+    
+    // Static intrinsic text height calculator (can be shared)
     static func calculateIntrinsicTextHeight(
-        for text: String, phase: WeChatRecordingPhase, processingDots: String,
+        for text: String,
         constrainedByWidth width: CGFloat
     ) -> CGFloat {
         let font = UIFont.systemFont(ofSize: 17, weight: .medium)
-        var textToMeasure = text
-        if phase == .processingASR || phase == .draggingToConvertToText {
-            if textToMeasure.isEmpty {
-                textToMeasure = processingDots.isEmpty ? " " : processingDots
-            } else {
-                textToMeasure += processingDots
-            }
-        }
-        if textToMeasure
-            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        {
-            textToMeasure = " "
-        }
-
+        let textToMeasure = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? " " : text
+        
         let textView = UITextView()
         textView.font = font
         textView.textContainerInset = .zero
         textView.textContainer.lineFragmentPadding = 0
         textView.text = textToMeasure
-        let size = textView.sizeThatFits(
-            CGSize(width: max(1, width), height: CGFloat.greatestFiniteMagnitude)
+        let size = textView.sizeThatFits(CGSize(width: max(1, width), height: .greatestFiniteMagnitude))
+        return ceil(size.height)
+    }
+    
+    
+    private func updateAndAnimateBubbleHeight() {
+        let newHeight = WechatRecordingIndicator.calculateDynamicASRBubbleHeight(
+            forText: inputViewModel.transcribedText,
+            phase: currentPhase,
+            processingDots: processingDots,
+            viewModel: inputViewModel,
+            indicatorWidth: currentIndicatorOverallWidth // Pass the correct width
         )
-        let calculatedHeight = ceil(size.height)
-        return max(20, calculatedHeight)
+        
+        if abs(inputViewModel.currentASRBubbleHeight - newHeight) > 1 { // Avoid jitter for tiny changes
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                inputViewModel.currentASRBubbleHeight = newHeight
+            }
+        } else if inputViewModel.currentASRBubbleHeight != newHeight {
+            inputViewModel.currentASRBubbleHeight = newHeight // Update without animation for small adjustments
+        }
+    }
+    
+    // Helper to get the current overall width of this indicator
+    private var currentIndicatorOverallWidth: CGFloat {
+        // This should reflect the width set by WeChatRecordingOverlayView
+        // For simplicity, assuming it's mostly asrIndicatorWidth when ASR content is shown
+        switch currentPhase {
+        case .draggingToCancel: return UIScreen.main.bounds.width * 0.2 // cancelIndicatorWidth
+        case .draggingToConvertToText, .processingASR: return UIScreen.main.bounds.width * 0.9 // asrIndicatorWidth
+        default: return UIScreen.main.bounds.width * 0.45 // recordingIndicatorWidth
+        }
     }
 }

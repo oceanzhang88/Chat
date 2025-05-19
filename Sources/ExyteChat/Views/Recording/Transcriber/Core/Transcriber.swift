@@ -360,6 +360,65 @@ public actor Transcriber {
             }
         }
     }
+    
+    // Add this new public method inside the Transcriber actor
+    public func transcribeAudioFile(url: URL) async throws -> String {
+        logger.debug("Starting transcription for audio file: \(url.path) with locale: \(self.config.locale.identifier)")
+        
+        guard speechRecognizer.isAvailable else {
+            logger.error("Speech recognizer is not available for locale: \(self.config.locale.identifier)")
+            throw TranscriberError.noRecognizer
+        }
+        
+        let request = SFSpeechURLRecognitionRequest(url: url)
+        // Configure the request using the current `self.config`
+        request.shouldReportPartialResults = false // Typically false for file-based transcription
+        request.requiresOnDeviceRecognition = config.requiresOnDeviceRecognition
+        request.addsPunctuation = config.addsPunctuation
+        request.taskHint = config.taskHint
+        if let contextualStrings = config.contextualStrings {
+            request.contextualStrings = contextualStrings
+        }
+        
+        // Apply custom language model if configured
+        if let languageModelManager = languageModelManager {
+            try await languageModelManager.waitForModel()
+            if let lmConfig = await languageModelManager.getConfiguration() {
+                request.requiresOnDeviceRecognition = true // Custom LM usually implies on-device
+                request.customizedLanguageModel = lmConfig
+                logger.debug("Applied custom language model for file transcription.")
+            }
+        }
+        
+        return try await withCheckedThrowingContinuation { continuation in
+            // Keep a reference to the task if you need to cancel it, though for this flow it might not be necessary.
+            _ = speechRecognizer.recognitionTask(with: request) { (result, error) in
+                if let error = error {
+                    self.logger.error("Audio file recognition error: \(error.localizedDescription)")
+                    continuation.resume(throwing: TranscriberError.recognitionFailure(error))
+                    return
+                }
+                
+                guard let result = result else {
+                    self.logger.error("Audio file recognition: No result and no error.")
+                    // Create a more specific error or use a generic one
+                    continuation.resume(throwing: TranscriberError.recognitionFailure(
+                        NSError(domain: "Transcriber", code: -2, userInfo: [NSLocalizedDescriptionKey: "No recognition result."])
+                    ))
+                    return
+                }
+                
+                // We expect isFinal to be true since shouldReportPartialResults is false.
+                if result.isFinal {
+                    let transcription = result.bestTranscription.formattedString
+                    self.logger.debug("Audio file recognition final transcription: \(transcription)")
+                    continuation.resume(returning: transcription)
+                }
+                // If not isFinal, and no error, something unexpected happened for a non-partial request.
+                // This path should ideally not be hit if shouldReportPartialResults is false.
+            }
+        }
+    }
 }
 
 // MARK: - SilenceState

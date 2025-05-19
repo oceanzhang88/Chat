@@ -52,6 +52,8 @@ final class InputViewModel {
     var currentlyEditingASRText: String = ""   // Holds the text being edited in the overlay
     var isASROverlayEditorFocused: Bool = false
     
+    var currentASRBubbleHeight: CGFloat = ASRBubbleMetrics.minOverallHeight // Stores the calculated height
+    
 
     let inputFieldId = UUID()  // Add this
 

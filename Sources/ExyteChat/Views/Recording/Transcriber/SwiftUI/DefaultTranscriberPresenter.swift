@@ -122,49 +122,95 @@ public class DefaultTranscriberPresenter: TranscriberPresenter {
         }
     }
     
-    // --- Method to Change Language ---
-    public func changeLanguage(toLocale newLocale: Locale) async {
-        guard currentLocale != newLocale else { return } // No change needed
-        
-        let wasRecording = self.isRecording
-        
-        if wasRecording {
-            await stopRecording() // Use the public stop method
+    // Add this new method
+    @MainActor
+    public func reTranscribeAudio(url: URL) async {
+        guard let transcriber = self.transcriber else {
+            self.error = TranscriberError.noRecognizer
+            DebugLogger.log("Presenter: Cannot re-transcribe, transcriber not available.")
+            return
         }
         
+        // Indicate that re-transcription is starting
+        self.transcribedText = "" // Or a placeholder like "Transcribing in [new language]..."
+        self.error = nil
+        // Consider adding an `isReTranscribing` @Published property if you want specific UI feedback
+        DebugLogger.log("Presenter: Attempting to re-transcribe audio from URL: \(url.lastPathComponent) with locale: \(self.currentLocale.identifier)")
+        
+        do {
+            let newTranscription = try await transcriber.transcribeAudioFile(url: url)
+            self.transcribedText = newTranscription
+            self.error = nil // Clear any previous error
+            DebugLogger.log("Presenter: Re-transcription successful. New text: \(newTranscription)")
+        } catch let anError {
+            self.error = anError // This will be a TranscriberError
+            self.transcribedText = "" // Clear text on error
+            DebugLogger.log("Presenter: Re-transcription failed. Error: \(anError.localizedDescription)")
+        }
+        // Reset `isReTranscribing` if you added it
+    }
+    
+    // --- Method to Change Language ---
+    public func changeLanguage(toLocale newLocale: Locale) async {
+        guard currentLocale != newLocale else {
+            DebugLogger.log("Presenter: Language selected is the same as current. No change needed.")
+            return
+        }
+        
+        let wasRecording = self.isRecording // Check if it was a live recording
+        if wasRecording {
+            DebugLogger.log("Presenter: Language changed during live recording. Stopping current recording.")
+            await stopRecording() // Stop any live recording; this will also clear lastRecordingURL via handleRecordingStop
+        }
+        
+        DebugLogger.log("Presenter: Changing language from \(currentLocale.identifier) to \(newLocale.identifier)")
         currentLocale = newLocale
-        // Create new configuration with the new locale, keeping other settings from baseConfig
+        
+        // Re-create baseConfig with the new locale, keeping other settings
         let newConfig = TranscriberConfiguration(
             locale: newLocale,
             silenceThreshold: baseConfig.silenceThreshold,
             silenceDuration: baseConfig.silenceDuration,
             languageModelInfo: baseConfig.languageModelInfo,
-            // Check if on-device recognition is supported for the new locale
-            // This might require querying SFSpeechRecognizer(locale: newLocale)?.supportsOnDeviceRecognition
             requiresOnDeviceRecognition: SFSpeechRecognizer(locale: newLocale)?.supportsOnDeviceRecognition == true ? baseConfig.requiresOnDeviceRecognition : false,
             shouldReportPartialResults: baseConfig.shouldReportPartialResults,
             contextualStrings: baseConfig.contextualStrings,
             taskHint: baseConfig.taskHint,
             addsPunctuation: baseConfig.addsPunctuation
         )
-        self.baseConfig = newConfig // Update baseConfig if you want changes to persist across further locale changes
+        self.baseConfig = newConfig // Update baseConfig for future initializations
         
-        // Re-initialize the transcriber
+        // Re-initialize the transcriber actor with the new configuration
         self.transcriber = Transcriber(config: newConfig, debugLogging: true)
         if self.transcriber == nil {
-            self.error = TranscriberError.noRecognizer // Or a more specific error
-            print("Failed to initialize transcriber for locale: \(newLocale.identifier)")
-            // Optionally, revert to the old locale or handle the error appropriately
+            self.error = TranscriberError.noRecognizer
+            DebugLogger.log("Presenter: Failed to re-initialize transcriber for new locale: \(newLocale.identifier)")
+            // Optionally revert currentLocale or handle UI feedback more explicitly
             return
         }
+        DebugLogger.log("Presenter: Transcriber re-initialized with new locale: \(newLocale.identifier)")
         
-        if wasRecording {
-            // Restart recording with the new language
-            // Reset transcribedText as it's a new session
+        // If it was NOT a live recording session that was stopped (i.e., user was viewing a previous ASR result)
+        // AND if there is a lastRecordingURL available from a *previous completed recording*, then attempt to re-transcribe.
+        // Note: `stopRecording()` called above for `wasRecording == true` would have cleared `lastRecordingURL`.
+        // So, this re-transcription will only happen if `wasRecording` was false and `lastRecordingURL` was already populated.
+        if !wasRecording, let audioURL = self.lastRecordingURL {
+            DebugLogger.log("Presenter: Language changed while not live recording. Attempting re-transcription of last audio: \(audioURL.lastPathComponent)")
+            await reTranscribeAudio(url: audioURL)
+        } else if wasRecording {
+            // If it was a live recording, it has been stopped. User needs to start a new recording.
+            // Reset text and error states for a clean slate for the new language.
             self.transcribedText = ""
-            self.audioDuration = nil
-            self.lastRecordingURL = nil
-            //            await startRecordingWithProgress()
+            self.error = nil
+            self.rmsLevel = 0.0 // Reset live recording indicators
+            DebugLogger.log("Presenter: Language changed during live recording. Recording stopped. User must start a new recording for the new language.")
+        } else {
+            // No active recording was stopped, and no `lastRecordingURL` to re-transcribe.
+            // This might happen if the language is changed when no ASR has occurred yet.
+            // Ensure text/error states are clean.
+            self.transcribedText = ""
+            self.error = nil
+            DebugLogger.log("Presenter: Language changed. No active recording and no previous audio to re-transcribe.")
         }
     }
     

@@ -110,6 +110,9 @@ struct WeChatRecordingOverlayView: View {
                             inputViewModel: inputViewModel, localization: localization,
                             targetWidth: asrIndicatorWidth
                         )
+                        // Use the height stored in the ViewModel, which was last set by the indicator
+                        // or re-calculated for the final text.
+                        .frame(height: inputViewModel.currentASRBubbleHeight) // <<<< Key Change
                         .transition(.opacity.combined(with: .scale(scale: 1.0)))
                     }
                 }
@@ -141,37 +144,26 @@ struct WeChatRecordingOverlayView: View {
             .padding(.top, UIApplication.safeArea.top + compactPadding)
         }
         .edgesIgnoringSafeArea(.all) // Dimmed background covers all
-        //        .onReceive(timer) { _ in
-        //            // Update main waveform data only if the indicator is in a state that shows it
-        //            if inputViewModel.isRecordingAudioForOverlay &&
-        //               (inputViewModel.weChatRecordingPhase == .recording || inputViewModel.weChatRecordingPhase == .draggingToCancel) {
-        //                updateWaveformDisplayData()
-        //            }
-        //        }
-//        .onChange(of: inputViewModel.attachments.recording?.waveformSamples) { _, newSamples in
-//            if inputViewModel.isRecordingAudioOverlay &&
-//                (inputViewModel.weChatRecordingPhase == .recording || inputViewModel.weChatRecordingPhase == .draggingToCancel) {
-//                updateWaveformDisplayData(samples: newSamples ?? [])
-//            }
-//        }
+        .onChange(of: inputViewModel.weChatRecordingPhase) { _, newPhase in
+            if case .asrCompleteWithText(let finalText) = newPhase {
+                // Recalculate and set the definitive height for ASRResultView based on final content
+                let finalHeight = WechatRecordingIndicator.calculateDynamicASRBubbleHeight(
+                    forText: inputViewModel.asrErrorMessage != nil ? (inputViewModel.asrErrorMessage ?? "") : finalText,
+                    phase: newPhase,
+                    processingDots: "",
+                    viewModel: inputViewModel,
+                    indicatorWidth: asrIndicatorWidth // Width that ASRResultView will use
+                )
+                if abs(inputViewModel.currentASRBubbleHeight - finalHeight) > 1 {
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                        inputViewModel.currentASRBubbleHeight = finalHeight
+                    }
+                } else {
+                    inputViewModel.currentASRBubbleHeight = finalHeight
+                }
+            }
+        }
     }
-    
-   
-    
-    
-//    private func padOrTruncateSamples(samples: [CGFloat], targetCount: Int, defaultValue: CGFloat) -> [CGFloat] {
-//        if samples.count == targetCount {
-//            return samples
-//        } else if samples.count > targetCount {
-//            return Array(samples.suffix(targetCount))
-//        } else {
-//            let paddingCount = targetCount - samples.count
-//            // For "in-place" live view, prepending pads the "older" side of the fixed display.
-//            return Array(repeating: defaultValue, count: paddingCount) + samples
-//        }
-//    }
-    
-    
 }
 
 // DimmedGradientBackgroundView remains the same
