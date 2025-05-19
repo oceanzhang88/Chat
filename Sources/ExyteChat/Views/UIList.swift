@@ -141,6 +141,17 @@ struct UIList<MessageContent: View, InputView: View>: UIViewRepresentable {
             }
         }
     }
+    
+    @MainActor
+    func performBatchTableUpdates(_ tableView: UITableView, closure: ()->()) async {
+        await withCheckedContinuation { continuation in
+            tableView.performBatchUpdates {
+                closure()
+            } completion: { _ in
+                continuation.resume()
+            }
+        }
+    }
 
     @MainActor
     private func applyUpdatesToTable(_ tableView: UITableView, splitInfo: SplitInfo, updateContextClosure: ([MessagesSection])->()) async {

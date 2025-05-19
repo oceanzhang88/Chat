@@ -10,7 +10,8 @@ struct WeChatInputView: View {
     let inputFieldId: UUID
 
     @State private var isVoiceMode: Bool = false
-    @FocusState private var isTextFocused: Bool
+    // Local FocusState for the embedded WeChatTextInputView
+    @FocusState private var isTextInputViewFocused: Bool
 
     @GestureState private var isLongPressSustained: Bool = false
     // No need for @State showRecordingOverlay, viewModel.isRecordingAudioForOverlay handles it
@@ -38,34 +39,68 @@ struct WeChatInputView: View {
     private var performInputAction: (InputViewAction) -> Void {
         viewModel.inputViewAction()
     }
-
+    
+    
+    
+    // Configuration
+    // State for Manual Height
+    @State var textViewHeight: CGFloat = UIFont.preferredFont(forTextStyle: .body).lineHeight + 16
+    
+    var defaultHeight: CGFloat = 36
+    var verticalPadding: CGFloat = 10 // top(5)+bottom(5) from CustomTextView's insets
+    var maxLines: CGFloat = 10
+    var maxHeight: CGFloat {
+        let lineHeight = UIFont.preferredFont(forTextStyle: .body).lineHeight
+        return lineHeight * maxLines + verticalPadding
+    }
+    var font: UIFont = UIFont.preferredFont(forTextStyle: .body)
+    
+    
+    
     var body: some View {
         VStack(spacing: 0) {
-            HStack(alignment: .center, spacing: 8) {
-                modeToggleButton
-                centerInputArea
-                emojiButton
-                addButton
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .frame(minHeight: 48)
-            .background(theme.colors.inputBG)
+//            GeometryReader { geometry in
+            HStack(alignment: .bottom, spacing: 8) {
+                    modeToggleButton
+                    centerInputArea
+//                    .frame(height: .infinity) // Use state variable for height
+                        .layoutPriority(1)
+//                        .animation(.easeInOut(duration: 0.2), value: textViewHeight)
+                    emojiButton
+                    addButton
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+//                .frame(minHeight: UIFont.preferredFont(forTextStyle: .body).lineHeight + 16)
+                .background(theme.colors.inputBG)
+                .onChange(of: viewModel.text) { _, newValue in
+                    // Recalculate height based on new text and geometry
+                    recalculateAndUpdateHeight(text: newValue, geometryProxyWidth: UIScreen.main.bounds.width - 16)
+                }
+                .onAppear { // Calculate initial height
+                    recalculateAndUpdateHeight(text: viewModel.text, geometryProxyWidth: UIScreen.main.bounds.width - 16)
+                }
+//            }
+            
         }
+//        .frame(height: textViewHeight)
+        .animation(.easeInOut(duration: 1), value: textViewHeight)
         .onAppear {
-            if globalFocusState.focus == .uuid(self.inputFieldId) {
-                isTextFocused = true
-            }
+            // Sync local focus state with global focus state on appear
+            self.isTextInputViewFocused = (globalFocusState.focus == .uuid(self.inputFieldId))
+            
             // Listen for the notification to switch to text input and focus
             NotificationCenter.default.addObserver(forName: .switchToTextInputAndFocus, object: nil, queue: .main) { notification in
-                guard let focusedFieldId = notification.object as? UUID, focusedFieldId == self.inputFieldId else { return }
-                
-                if self.viewModel.isEditingASRTextInOverlay {
-                    self.isVoiceMode = false // Switch to keyboard mode
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { // Brief delay for UI to update
-                        self.isTextFocused = true // Focus the text field
-                        self.globalFocusState.focus = .uuid(self.inputFieldId) // Ensure global focus state is also set
-                        DebugLogger.log("WeChatInputView: Switched to text mode and focused text field due to ASR edit.")
+                DispatchQueue.main.async {
+                    guard let focusedFieldId = notification.object as? UUID, focusedFieldId == self.inputFieldId else { return }
+                    
+                    if self.viewModel.isEditingASRTextInOverlay {
+                        self.isVoiceMode = false // Switch to keyboard mode
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { // Brief delay for UI to update
+                            self.isTextInputViewFocused = true // Directly set local focus
+                            self.globalFocusState.focus = .uuid(self.inputFieldId) // Ensure global focus state is also set
+                            DebugLogger.log("WeChatInputView: Switched to text mode and focused text field due to ASR edit.")
+                        }
                     }
                 }
             }
@@ -73,6 +108,26 @@ struct WeChatInputView: View {
         .onDisappear {
             NotificationCenter.default.removeObserver(self, name: .switchToTextInputAndFocus, object: nil)
         }
+//        // Sync local focus state with global focus state
+//        .onChange(of: globalFocusState.focus) { oldValue, newValue in
+//            let shouldBeFocused = (newValue == .uuid(self.inputFieldId))
+//            if self.isTextInputViewFocused != shouldBeFocused {
+//                self.isTextInputViewFocused = shouldBeFocused
+//            }
+//        }
+//        // Sync global focus state with local focus state
+//        .onChange(of: isTextInputViewFocused) { oldValue, newValue in
+//            if newValue {
+//                if globalFocusState.focus != .uuid(self.inputFieldId) {
+//                    globalFocusState.focus = .uuid(self.inputFieldId)
+//                }
+//            } else {
+//                // Only clear global focus if it was previously set to this field
+//                if globalFocusState.focus == .uuid(self.inputFieldId) {
+//                    globalFocusState.focus = nil
+//                }
+//            }
+//        }
     }
 
     @ViewBuilder
@@ -81,9 +136,7 @@ struct WeChatInputView: View {
         if isVoiceMode {
             Button {
                 isVoiceMode = false // Toggle the mode
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                    isTextFocused = true // Focus text field
-                }
+                isTextInputViewFocused = true // Request focus for the text input
             } label: {
                 Image(systemName: "keyboard")
                     .resizable().scaledToFit()
@@ -96,7 +149,8 @@ struct WeChatInputView: View {
         } else {
             Button {
                 isVoiceMode = true // Toggle the mode
-                isTextFocused = false
+//                isTextFocused = false
+                isTextInputViewFocused = false // Remove focus from text field
                 keyboardState.resignFirstResponder()
                 viewModel.weChatRecordingPhase = .idle
             } label: {
@@ -116,42 +170,69 @@ struct WeChatInputView: View {
         if isVoiceMode {
             holdToTalkGestureArea
         } else {
-            messageTextField
-        }
-    }
-
-    @ViewBuilder
-    private var messageTextField: some View {
-        TextField("", text: $viewModel.text, axis: .vertical)
-            .placeholder(when: viewModel.text.isEmpty) {
-                Text(messagePlaceholderText)
-                    .foregroundColor(theme.colors.inputPlaceholderText)
-                    .padding(.horizontal, 10)
-             }
-            .foregroundStyle(theme.colors.inputText)
-            .customFocus($globalFocusState.focus, equals: .uuid(inputFieldId)) // Ensure this uses the passed/managed inputFieldId
-            .focused($isTextFocused)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(Color(uiColor: .systemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .frame(minHeight: minInputHeight)
-            .fixedSize(horizontal: false, vertical: true)
-            .onTapGesture { if !isTextFocused { isTextFocused = true } }
-            .onChange(of: globalFocusState.focus) { _, newValue in
-                if newValue != .uuid(self.inputFieldId) { isTextFocused = false }
-            }
-            .onChange(of: isTextFocused) { _, focused in
-                if focused {
-                    globalFocusState.focus = .uuid(self.inputFieldId)
-                    //viewModel.isEditingASRText = false // If user manually focuses, assume they are done with ASR edit intent
-                } else {
-                    if globalFocusState.focus == .uuid(self.inputFieldId) && !viewModel.isEditingASRTextInOverlay { // Don't clear global focus if we are programmatically focusing due to ASR edit
-                        // globalFocusState.focus = nil // This might be too aggressive if focus shifts to another element controlled by GlobalFocusState
-                    }
+            // Replace the old TextField with WeChatTextInputView
+            WechatInputTextView(
+                text: $viewModel.text, // Bind to the ViewModel's text
+                placeholder: messagePlaceholderText, // Use the localized placeholder
+                parentFocusBinding: $globalFocusState.focus,
+                inputFieldID: inputFieldId
+            ) { messageText in
+                // This closure is called when the "Send" return key is pressed
+                // or the send button within WeChatTextInputView (if it had one) is tapped.
+                if !messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    performInputAction(.send) // Trigger the send action in the ViewModel
+                    // ViewModel's send action should handle text clearing via its reset() method.
                 }
             }
+            .frame(height: textViewHeight)
+            
+//            onHeightDidChange: { newHeight in
+//                // Update the textViewHeight state, which will trigger animation
+//                if self.textViewHeight != newHeight {
+//                    DispatchQueue.main.async {
+//                        self.textViewHeight = newHeight
+//                    }
+//                    
+//                }
+//            }
+            .offset(y: -4)
+            
+        }
     }
+    
+
+//    @ViewBuilder
+//    private var messageTextField: some View {
+//        TextField("", text: $viewModel.text, axis: .vertical)
+//            .placeholder(when: viewModel.text.isEmpty) {
+//                Text(messagePlaceholderText)
+//                    .foregroundColor(theme.colors.inputPlaceholderText)
+//                    .padding(.horizontal, 10)
+//             }
+//            .foregroundStyle(theme.colors.inputText)
+//            .customFocus($globalFocusState.focus, equals: .uuid(inputFieldId)) // Ensure this uses the passed/managed inputFieldId
+//            .focused($isTextFocused)
+//            .padding(.horizontal, 10)
+//            .padding(.vertical, 8)
+//            .background(Color(uiColor: .systemBackground))
+//            .clipShape(RoundedRectangle(cornerRadius: 8))
+//            .frame(minHeight: minInputHeight)
+//            .fixedSize(horizontal: false, vertical: true)
+//            .onTapGesture { if !isTextFocused { isTextFocused = true } }
+//            .onChange(of: globalFocusState.focus) { _, newValue in
+//                if newValue != .uuid(self.inputFieldId) { isTextFocused = false }
+//            }
+//            .onChange(of: isTextFocused) { _, focused in
+//                if focused {
+//                    globalFocusState.focus = .uuid(self.inputFieldId)
+//                    //viewModel.isEditingASRText = false // If user manually focuses, assume they are done with ASR edit intent
+//                } else {
+//                    if globalFocusState.focus == .uuid(self.inputFieldId) && !viewModel.isEditingASRTextInOverlay { // Don't clear global focus if we are programmatically focusing due to ASR edit
+//                        // globalFocusState.focus = nil // This might be too aggressive if focus shifts to another element controlled by GlobalFocusState
+//                    }
+//                }
+//            }
+//    }
 
     @ViewBuilder
     private var holdToTalkGestureArea: some View {
@@ -212,7 +293,7 @@ struct WeChatInputView: View {
                         Task { @MainActor in // Ensure operations on viewModel are on MainActor
                             
                             // Evaluate the await expression first and store its result
-                            let isTranscriberCurrentlyRecording = await viewModel.transcriber.isRecording
+                            let isTranscriberCurrentlyRecording = viewModel.transcriber.isRecording
                             if viewModel.state == .isRecordingHold && isTranscriberCurrentlyRecording { // Check if transcriber was indeed active
                                 await viewModel.transcriber.stopRecording()
                                 // The transcriber's completion handler (modified in step 2) will use the .convertToText intent
@@ -282,7 +363,8 @@ struct WeChatInputView: View {
     @ViewBuilder
     private var emojiButton: some View {
         Button {
-            isTextFocused = false; keyboardState.resignFirstResponder()
+            isTextInputViewFocused = false // Remove focus from text field
+            keyboardState.resignFirstResponder()
             DebugLogger.log("Emoji button tapped")
             // Potentially toggle a custom emoji keyboard view if you have one
         } label: {
@@ -296,7 +378,8 @@ struct WeChatInputView: View {
     @ViewBuilder
     private var addButton: some View {
         Button {
-            isTextFocused = false; keyboardState.resignFirstResponder()
+            isTextInputViewFocused = false // Remove focus from text field
+            keyboardState.resignFirstResponder()
             performInputAction(.photo) // Or a more generic .addAttachment action
             DebugLogger.log("Add button tapped")
         } label: {
@@ -306,5 +389,47 @@ struct WeChatInputView: View {
         }
         .frame(height: minInputHeight + (buttonPadding * 2))
     }
+    
+    // --- Combined Calculation and Update Function ---
+    private func recalculateAndUpdateHeight(text: String, geometryProxyWidth: CGFloat) {
+        // Estimate available width for the CustomTextView more accurately
+        let totalBarWidth =  geometryProxyWidth
+        let buttonWidth: CGFloat = 30 // Slightly larger estimate for tappable area/visual size
+        let spacing: CGFloat = 12
+        let textHorizontalPadding: CGFloat = 8 * 2 // Internal TextView padding (L+R)
+        
+        // Subtract widths of 3 buttons, 3 spacing gaps, and text internal padding
+        let estimatedTextViewWidth = totalBarWidth - (3 * buttonWidth) - (3 * spacing) - textHorizontalPadding
+        let availableWidth = max(10, estimatedTextViewWidth) // Ensure width is positive
+        
+        // Calculate and update the height state variable
+        withAnimation(.linear(duration: 1)) {
+            textViewHeight = calculateHeight(for: text, width: availableWidth)
+        }
+        
+    }
+    
+    // Calculate required height for text within a given width (Keep this function)
+    private func calculateHeight(for text: String, width: CGFloat) -> CGFloat {
+        if text.isEmpty {
+            return defaultHeight
+        }
+        
+        let attributedString = NSAttributedString(
+            string: text,
+            attributes: [.font: font]
+        )
+        
+        let calculatedSize = attributedString.boundingRect(
+            with: CGSize(width: width, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            context: nil
+        )
+        
+        let calculatedHeight = ceil(calculatedSize.height) + verticalPadding
+        
+        return max(defaultHeight, min(calculatedHeight, maxHeight))
+    }
 }
+
 
