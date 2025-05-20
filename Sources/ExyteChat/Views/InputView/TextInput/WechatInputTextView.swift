@@ -25,9 +25,29 @@ struct WechatInputTextView: UIViewRepresentable {
     var defaultHeight: CGFloat {
         font.lineHeight + textContainerInset.top + textContainerInset.bottom
     }
-    var maxLines: CGFloat = 5
+    var maxLines: CGFloat = 10
     var maxHeight: CGFloat {
         (font.lineHeight * maxLines) + textContainerInset.top + textContainerInset.bottom
+    }
+    
+    init(
+        text: Binding<String>,
+        placeholder: String,
+        parentFocusBinding: Binding<Focusable?>,
+        inputFieldID: UUID,
+        font: UIFont = UIFont.preferredFont(forTextStyle: .body),
+        // ... other non-closure params ...
+        onSend: @escaping (String) -> Void,
+        onHeightDidChange: @escaping (CGFloat) -> Void // Made non-optional and last
+    ) {
+        _text = text
+        self.placeholder = placeholder
+        _parentFocusBinding = parentFocusBinding
+        self.inputFieldID = inputFieldID
+        self.font = font
+        // ...
+        self.onSend = onSend
+        self.onHeightDidChange = onHeightDidChange
     }
     
     func makeUIView(context: Context) -> UITextView {

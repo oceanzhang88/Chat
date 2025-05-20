@@ -31,9 +31,17 @@ enum RecordingIntent: Sendable, Equatable {
 @Observable
 @MainActor
 final class InputViewModel {
-
+    
+    var text = "" {
+        didSet {
+            validateDraft()
+        }
+    }
     var transcribedText: String = ""  // For STT result
     var asrErrorMessage: String? = nil  // For STT errors
+    var editingASRTextCount: Int = 0 // New flag to control edit mode in ASRResultView
+    var currentlyEditingASRText: String = ""   // Holds the text being edited in the overlay
+    
     var mediaPickerMode = MediaPickerMode.photos
     var showActivityIndicator = false
     var shouldHideMainInputBar: Bool = false  // NEW PROPERTY
@@ -46,22 +54,12 @@ final class InputViewModel {
     var subscriptions = Set<AnyCancellable>()
 
     var currentRecordingIntent: RecordingIntent = .none
-    
     var isEditingASRTextInOverlay: Bool = false // New flag to control edit mode in ASRResultView
-    var editingASRTextCount: Int = 0 // New flag to control edit mode in ASRResultView
-    var currentlyEditingASRText: String = ""   // Holds the text being edited in the overlay
     var isASROverlayEditorFocused: Bool = false
     
     var currentASRBubbleHeight: CGFloat = ASRBubbleMetrics.minOverallHeight // Stores the calculated height
     
-
     let inputFieldId = UUID()  // Add this
-
-    var text = "" {
-        didSet {
-            validateDraft()
-        }
-    }
     var attachments = InputViewAttachments() {
         didSet {
             validateDraft()
@@ -295,7 +293,7 @@ final class InputViewModel {
                 if hasPermission {
                     if await recorder.isRecording {  // If already recording (e.g. tap-locked), then stop.
                         DebugLogger.log("Action .recordAudioTap: Was recording (tap-locked), now stopping.")
-                        await self.inputViewActionInternal(.stopRecordAudio)
+                        self.inputViewActionInternal(.stopRecordAudio)
                     } else {  // Not recording, so start tap-locked recording.
                         DebugLogger.log("Action .recordAudioTap: Starting tap-locked recording.")
                         await recordAudio(type: .simple)  // Sets weChatRecordingPhase = .recording
@@ -357,7 +355,7 @@ final class InputViewModel {
                 // ***** THIS IS THE CRUCIAL ADDITION/MODIFICATION *****
                 // Stop the DefaultTranscriberPresenter (and its internal Transcriber) if it was active
                 // 'self.transcriber' is the instance of DefaultTranscriberPresenter in InputViewModel
-                if await self.transcriber.isRecording {
+                if  self.transcriber.isRecording {
                     DebugLogger.log(".deleteRecord: Transcriber (DefaultTranscriberPresenter) is active, stopping it.")
                     await self.transcriber.stopRecording()  // This calls the presenter's stop method
                 }

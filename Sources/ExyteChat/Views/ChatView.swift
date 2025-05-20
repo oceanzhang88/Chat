@@ -181,16 +181,7 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
             mainView
                 .opacity(isASREditingOverlayActive && inputViewModel.isRecordingAudioOverlay ? 0 : 1)
                 .onChange(of: inputViewSize.height) { oldHeight, newHeight in
-                    // Only trigger if the input view grew (newHeight > oldHeight)
-                    // and the list was already scrolled to the bottom,
-                    // and the keyboard is NOT the primary reason for this change
-                    // (keyboard changes are handled by UIList.Coordinator's contentInset).
                     DebugLogger.log( "Input view height changed: \(oldHeight) -> \(newHeight)")
-//                    if newHeight > oldHeight && isScrolledToBottom && !keyboardState.isShown {
-//                        DispatchQueue.main.async { // Ensure it's after the layout update
-//                            NotificationCenter.default.post(name: .onScrollToBottom, object: nil)
-//                        }
-//                    }
                 }
                 
                 .background(chatBackground())
@@ -485,7 +476,6 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                 } // End of switch
             }
         }
-//        .frame(minHeight: inputViewSize.height)
         .sizeGetter($inputViewSize)
         .environmentObject(globalFocusState)
         .onAppear(perform: inputViewModel.onStart)

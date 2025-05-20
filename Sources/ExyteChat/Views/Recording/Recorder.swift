@@ -84,7 +84,7 @@ final actor Recorder {
             audioTimer = Task { [weak self] in
                 var lastTickTime = Date()
                 while true {
-                    guard let mine = await self else {
+                    guard let mine = self else {
                         DebugLogger.log("Progress update task: self is nil, terminating.")
                         break
                     }
@@ -133,8 +133,8 @@ final actor Recorder {
 
     func stopRecording() -> (duration: Double, samples: [CGFloat], url: URL?) {
         DebugLogger.log("stopRecording called. Current recorder state: \(audioRecorder != nil), isRecording: \(self.isRecording)")
-        var finalDuration = self.currentDuration
-        var finalSamples = self.soundSamples
+        let finalDuration = self.currentDuration
+        let finalSamples = self.soundSamples
         let urlForThisRecording = self.currentRecordingURL
         
         audioRecorder?.stop()

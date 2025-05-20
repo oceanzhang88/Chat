@@ -117,7 +117,7 @@ struct ASRResultView: View {
                 .onTapGesture {
                     if !inputViewModel.isEditingASRTextInOverlay &&
                         inputViewModel.asrErrorMessage == nil, // Check for error
-                       case .asrCompleteWithText(let text) = inputViewModel.weChatRecordingPhase
+                       case .asrCompleteWithText(_) = inputViewModel.weChatRecordingPhase
                     { // Check if text is not empty
                         inputViewModel.startEditingASRText()
                     }

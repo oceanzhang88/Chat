@@ -86,10 +86,14 @@ extension InputViewModel {
     
     @MainActor
     func confirmASREditAndSend() {
-        // Use the text from currentlyEditingASRText
-        self.text = self.currentlyEditingASRText
+        // Use the text from currentlyEditingASRText if available
+        if self.currentlyEditingASRText.isEmpty {
+            text = transcribedText
+        } else {
+            text = currentlyEditingASRText
+            transcribedText = currentlyEditingASRText
+        }
         self.attachments.recording = nil // Discard original voice
-        self.transcribedText = self.currentlyEditingASRText // Update this for consistency
         
         DebugLogger.log("confirmASREditAndSend: Text set to \"\(self.text)\". Original voice discarded. Preparing to send.")
         
@@ -153,7 +157,7 @@ extension InputViewModel {
             DebugLogger.log("recordAudio: Simple recorder was active, stopping it.")
             _ = await recorder.stopRecording() // Stop simple recorder
         }
-        if await transcriber.isRecording {
+        if  transcriber.isRecording {
             DebugLogger.log("recordAudio: Transcriber was active, stopping it.")
             await transcriber.stopRecording() // Stop transcriber
         }
@@ -208,7 +212,7 @@ extension InputViewModel {
                             self.transcribedText = finalText
                             self.attachments.recording?.url = finalURL
                             
-                            if let url = finalURL, let presenterDuration = await self.transcriber.audioDuration {
+                            if let url = finalURL, let presenterDuration = self.transcriber.audioDuration {
                                 self.attachments.recording?.duration = presenterDuration
                             } else if finalURL == nil && !finalText.isEmpty { // Transcription succeeded but maybe audio saving failed
                                 self.attachments.recording?.duration = Date().timeIntervalSince(self.transcriber.recordingStartTime ?? Date())
@@ -226,7 +230,7 @@ extension InputViewModel {
                             }
                             
                             if self.currentRecordingIntent == .convertToText {
-                                if let error = await self.transcriber.error { // Check for transcriber error first
+                                if let error = self.transcriber.error { // Check for transcriber error first
                                     self.asrErrorMessage = error.localizedDescription // Or a user-friendly message
                                     self.transcribedText = ""
                                     self.weChatRecordingPhase = .asrCompleteWithText("")
