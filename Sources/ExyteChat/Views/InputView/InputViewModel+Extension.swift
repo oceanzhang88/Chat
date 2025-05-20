@@ -85,7 +85,7 @@ extension InputViewModel {
     }
     
     @MainActor
-    func confirmASREditAndSend() {
+    func confirmASRTextAndSend() {
         // Use the text from currentlyEditingASRText if available
         if self.currentlyEditingASRText.isEmpty {
             text = transcribedText

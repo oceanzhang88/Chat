@@ -83,7 +83,7 @@ struct BottomControlsView: View {
                         Spacer()
                         // Send Text (Checkmark) Button (WeChat Style)
                         Button(action: {
-                            inputViewModel.confirmASREditAndSend()
+                            inputViewModel.confirmASRTextAndSend()
                         }) {
                             ZStack {
                                 Circle()
