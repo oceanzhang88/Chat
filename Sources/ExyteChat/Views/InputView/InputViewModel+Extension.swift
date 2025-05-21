@@ -157,7 +157,7 @@ extension InputViewModel {
             DebugLogger.log("recordAudio: Simple recorder was active, stopping it.")
             _ = await recorder.stopRecording() // Stop simple recorder
         }
-        if  transcriber.isRecording {
+        if  await transcriber.isRecording {
             DebugLogger.log("recordAudio: Transcriber was active, stopping it.")
             await transcriber.stopRecording() // Stop transcriber
         }

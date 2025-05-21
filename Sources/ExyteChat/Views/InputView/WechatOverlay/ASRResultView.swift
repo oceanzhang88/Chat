@@ -144,7 +144,7 @@ struct ASRResultView: View {
         .animation(.easeInOut(duration: 0.2), value: inputViewModel.isEditingASRTextInOverlay)
         .frame(width: targetWidth)
         .sheet(isPresented: $showingLanguageSheet) {
-            LanguageSelectionSheetView(isPresented: $showingLanguageSheet, inputViewModel: inputViewModel)
+            LanguageSelectionSheetView(isPresented: $showingLanguageSheet, inputViewModel: inputViewModel, locale: inputViewModel.transcriber.currentLocale)
 //                .presentationDetents([PresentationDetent.medium, PresentationDetent.large])
                 .presentationDetents([.height(UIScreen.main.bounds.height * 0.35)])
         }

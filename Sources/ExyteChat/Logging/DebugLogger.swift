@@ -9,6 +9,7 @@ extension Logger {
     static let omniSelfChat = Logger(subsystem: chatsystem, category: "chat")
 }
 
+
 /// A wrapper around Logger that handles debug mode checks
 struct DebugLogger {
     private let logger: Logger

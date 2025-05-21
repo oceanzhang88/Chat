@@ -35,7 +35,7 @@ public struct ChatLocalization: Hashable {
         convertToTextButton: String, // Add as parameter
         tapToEditText: String, // New
         sendVoiceButtonText: String, // New
-        unableToRecognizeWordsText: String, // New
+        unableToRecognizeWordsText: String // New
     ) {
         self.inputPlaceholder = inputPlaceholder
         self.signatureText = signatureText

@@ -5,7 +5,6 @@ import Combine // Make sure Combine is imported for @Published if not already vi
 /// Default implementation of SpeechRecognitionPresenter
 /// Provides ready-to-use speech recognition functionality for SwiftUI views
 @Observable
-@MainActor
 public class DefaultTranscriberPresenter: TranscriberPresenter {
     public var isRecording = false
     public var transcribedText = ""
@@ -123,7 +122,7 @@ public class DefaultTranscriberPresenter: TranscriberPresenter {
     }
     
     // Add this new method
-    @MainActor
+//    @MainActor
     public func reTranscribeAudio(url: URL) async {
         guard let transcriber = self.transcriber else {
             self.error = TranscriberError.noRecognizer
@@ -219,7 +218,7 @@ public class DefaultTranscriberPresenter: TranscriberPresenter {
     ///   - progressHandler: Called periodically with current duration, waveform samples, and transcribed text.
     ///   - completionHandler: Called when transcription stops (naturally or manually), providing final text and audio URL.
     /// - Throws: `TranscriberError` if setup fails or transcriber is unavailable.
-    @MainActor
+//    @MainActor
     public func startRecordingWithProgress(
         progressHandler: @escaping TranscriptionProgressHandler,
         completionHandler: @escaping (_ finalText: String, _ finalURL: URL?) -> Void
@@ -298,7 +297,7 @@ public class DefaultTranscriberPresenter: TranscriberPresenter {
     }
     
     /// Stops the current transcription session if one is active.
-    @MainActor
+//    @MainActor
     public func stopRecording() async {
         DebugLogger.log("stopRecording called. isRecording: \(isRecording)")
         if !isRecording {
@@ -316,7 +315,7 @@ public class DefaultTranscriberPresenter: TranscriberPresenter {
         recordingTask = nil // Clear the task reference
     }
     
-    @MainActor
+//    @MainActor
     private func handleRecordingStop(finalText: String, error: Error? = nil, wasCancelled: Bool = false) async {
         if !isRecording && !wasCancelled { // Avoid redundant calls if already stopped by another path
             DebugLogger.log("handleRecordingStop: Already stopped or not a direct cancellation stop. Current isRecording: \(isRecording)")
@@ -398,7 +397,7 @@ public class DefaultTranscriberPresenter: TranscriberPresenter {
         }
     }
     
-    @MainActor
+//    @MainActor
     public func calculateAudioDuration(for url: URL) async {
         let asset = AVURLAsset(url: url)
         do {

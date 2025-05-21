@@ -1,6 +1,7 @@
 // Chat/Sources/ExyteChat/Views/Recording/WechatRecordingIndicator.swift
 import SwiftUI
 
+@MainActor
 struct WechatRecordingIndicator: View {
     @Environment(\.chatTheme) private var theme
     var inputViewModel: InputViewModel
@@ -395,7 +396,7 @@ struct WechatRecordingIndicator: View {
         return overlayWidth - (ASRBubbleMetrics.horizontalPadding * 2)
     }
 
-    @MainActor
+    
     static func calculateDynamicASRBubbleHeight(
         forText text: String,
         phase: WeChatRecordingPhase,
@@ -458,7 +459,7 @@ struct WechatRecordingIndicator: View {
     }
     
     
-    private func updateAndAnimateBubbleHeight() {
+    @MainActor private func updateAndAnimateBubbleHeight() {
         let newHeight = WechatRecordingIndicator.calculateDynamicASRBubbleHeight(
             forText: inputViewModel.transcribedText,
             phase: currentPhase,

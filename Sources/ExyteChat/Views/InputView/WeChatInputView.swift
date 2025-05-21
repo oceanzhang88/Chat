@@ -10,7 +10,7 @@ struct WeChatInputView: View {
 
     // Local FocusState for the embedded WeChatTextInputView
     @FocusState private var isTextInputViewFocused: Bool
-    @GestureState private var isLongPressSustained: Bool = false
+    @State private var isLongPressSustained: Bool = false
    
     // Configuration
     @State private var isVoiceMode: Bool = false
@@ -34,15 +34,18 @@ struct WeChatInputView: View {
         return lineHeight * maxLines + verticalPadding
     }
     
+    @State var showHoldToTalk: Bool = true
+    
     private var holdToTalkTextComputed: String {
-        switch viewModel.weChatRecordingPhase {
-        case .draggingToCancel:
-            return localization.releaseToCancelText
-        case .draggingToConvertToText:
-            return "Release for Speech-to-Text"  // Add to ChatLocalization
-        default:  // .idle, .recording
-            return localization.holdToTalkText
-        }
+        return showHoldToTalk ? localization.holdToTalkText : localization.releaseToSendText
+//        switch viewModel.weChatRecordingPhase {
+//        case .draggingToCancel:
+//            return localization.releaseToCancelText
+//        case .draggingToConvertToText:
+//            return "Release for Speech-to-Text"  // Add to ChatLocalization
+//        default:  // .idle, .recording
+//            return localization.holdToTalkText
+//        }
     }
     private var messagePlaceholderText: String { localization.inputPlaceholder }
     private var emojiButtonSystemName: String { "face.smiling" }
@@ -205,7 +208,7 @@ struct WeChatInputView: View {
 
     @ViewBuilder
     private var holdToTalkGestureArea: some View {
-        let longPressMinDuration = 0.25
+        let longPressMinDuration = 0.5
         let longPressGesture = LongPressGesture(minimumDuration: longPressMinDuration)
         let dragGesture = DragGesture(minimumDistance: 0, coordinateSpace: .global)
         
@@ -220,90 +223,108 @@ struct WeChatInputView: View {
 //            .onEnded { g2 in
 //                DebugLogger.log("Gesture.onEnded: LongPress active=\(g2.first), Drag info exists=\(g2.second?.location)")
 //            }
-        let combinedGesture = longPressGesture.simultaneously(with: dragGesture)
-            .updating($isLongPressSustained) { value, gestureState, transaction in
-                // Log directly inside .updating() to see if it's even entered
-                DebugLogger.log("Gesture.updating: LongPress active=\(value.first ?? false), Drag info exists=\(value.second != nil)")
-                gestureState = value.first ?? false
-            }
+        let combinedGesture = longPressGesture
             .onChanged { value in
-                DebugLogger.log("Gesture.onChanged: LongPress active=\(value.first ?? false)")
-                guard value.first == true, let dragInfo = value.second else {
-                    if viewModel.isDraggingInCancelOverlay { viewModel.isDraggingInCancelOverlay = false }
-                    if viewModel.isDraggingToTextOverlay { viewModel.isDraggingToTextOverlay = false }
-                    if viewModel.weChatRecordingPhase == .draggingToCancel || viewModel.weChatRecordingPhase == .draggingToConvertToText {
-                        viewModel.weChatRecordingPhase = .recording
-                    }
-                    return
-                }
-
-                let currentDragLocation = dragInfo.location
-                let isOverCancel = self.viewModel.cancelRectGlobal.contains(currentDragLocation) && !self.viewModel.cancelRectGlobal.isEmpty
-                let isOverConvertToText = self.viewModel.convertToTextRectGlobal.contains(currentDragLocation) && !self.viewModel.convertToTextRectGlobal.isEmpty
-
-                viewModel.isDraggingInCancelOverlay = isOverCancel
-                viewModel.isDraggingToTextOverlay = isOverConvertToText
-
-                if isOverCancel {
-                    if viewModel.weChatRecordingPhase != .draggingToCancel { viewModel.weChatRecordingPhase = .draggingToCancel }
-                } else if isOverConvertToText {
-                    if viewModel.weChatRecordingPhase != .draggingToConvertToText { viewModel.weChatRecordingPhase = .draggingToConvertToText }
-                } else {
-                    if viewModel.weChatRecordingPhase != .recording { viewModel.weChatRecordingPhase = .recording }
-                }
+                // This means long press has started but not necessarily met minimumDuration yet
+                // We'll use onEnded of LongPressGesture to confirm it.
+                DebugLogger.log("Gesture.onChanged: LongPress active=\(value), not necessarily met minimumDuration")
+                showHoldToTalk = false
             }
             .onEnded { value in
-                DebugLogger.log("Gesture.onEnded: LongPress active at end=\(value.first ?? false)")
-                let longPressWasSustained = value.first ?? false
-
-                let endedOverCancel = viewModel.isDraggingInCancelOverlay  // Capture before reset
-                let endedOverConvertToText = viewModel.isDraggingToTextOverlay  // Capture before reset
-
-                // Reset UI drag states immediately
-                viewModel.isDraggingInCancelOverlay = false
-                viewModel.isDraggingToTextOverlay = false
-
-                if longPressWasSustained {
-                    if endedOverCancel {
-                        DebugLogger.log("Gesture Ended on .draggingToCancel. Action: deleteRecord")
-                        performInputAction(.deleteRecord)
-                    } else if endedOverConvertToText {
-                        DebugLogger.log("Gesture Ended on .draggingToConvertToText. Setting intent to .convertToText and stopping transcriber.")
-                        viewModel.currentRecordingIntent = .convertToText  // Set the intent
-
-                        Task { @MainActor in  // Ensure operations on viewModel are on MainActor
-
-                            // Evaluate the await expression first and store its result
-                            let isTranscriberCurrentlyRecording = viewModel.transcriber.isRecording
-                            if viewModel.state == .isRecordingHold && isTranscriberCurrentlyRecording {  // Check if transcriber was indeed active
-                                await viewModel.transcriber.stopRecording()
-                                // The transcriber's completion handler (modified in step 2) will use the .convertToText intent
-                                // and set weChatRecordingPhase = .asrCompleteWithText, showing the ASR results UI.
-                            } else {
-                                // Fallback or error: transcriber wasn't active as expected, or was not in .isRecordingHold state.
-                                DebugLogger.log("ConvertToText: Transcriber was not active or not in the expected state. Performing cleanup.")
-                                performInputAction(.deleteRecord)  // Perform cleanup by deleting any partial recording
-                            }
-                        }
-                    } else {  // Released in the "send voice" zone (center)
-                        DebugLogger.log("Gesture Ended on .recording (normal release). Action: send")
-                        performInputAction(.send)  // This will send the voice memo directly
+                // Long press confirmed
+                DebugLogger.log("Gesture.onEnded: Long press confirmed \(value)")
+                isLongPressSustained = true
+                // Optionally, trigger a haptic feedback here
+                // Now, allow dragging
+            }
+            .simultaneously(with: dragGesture
+                .onChanged { dragInfo in
+                    DebugLogger.log("Gesture.onChanged: LongPress active=\(dragInfo.location)")
+//                    guard let dragInfo = value else {
+//                        if viewModel.isDraggingInCancelOverlay { viewModel.isDraggingInCancelOverlay = false }
+//                        if viewModel.isDraggingToTextOverlay { viewModel.isDraggingToTextOverlay = false }
+//                        if viewModel.weChatRecordingPhase == .draggingToCancel || viewModel.weChatRecordingPhase == .draggingToConvertToText {
+//                            viewModel.weChatRecordingPhase = .recording
+//                        }
+//                        return
+//                    }
+                    if !isLongPressSustained {
+                        return
                     }
-                } else {  // Long press was not sustained (too short)
-                    DebugLogger.log("Gesture Ended: Long press not sustained. Current VM phase: \(viewModel.weChatRecordingPhase)")
-                    // If it was a very short tap, it might not even have started recording.
-                    // If it did start (e.g., state became .isRecordingHold), then cancel.
-                    if viewModel.weChatRecordingPhase == .recording || viewModel.state == .isRecordingHold {
-                        performInputAction(.deleteRecord)
-                    }
-                    // Ensure phase is reset if it wasn't a sustained action leading to send/stt/cancel
-                    if viewModel.weChatRecordingPhase != .idle && viewModel.weChatRecordingPhase != .processingASR  // Already handled above
-                        && viewModel.weChatRecordingPhase != .asrCompleteWithText("")
-                    {  // Already handled above
-                        viewModel.weChatRecordingPhase = .idle
+                    let currentDragLocation = dragInfo.location
+                    let isOverCancel = self.viewModel.cancelRectGlobal.contains(currentDragLocation) && !self.viewModel.cancelRectGlobal.isEmpty
+                    let isOverConvertToText = self.viewModel.convertToTextRectGlobal.contains(currentDragLocation) && !self.viewModel.convertToTextRectGlobal.isEmpty
+
+                    viewModel.isDraggingInCancelOverlay = isOverCancel
+                    viewModel.isDraggingToTextOverlay = isOverConvertToText
+
+                    if isOverCancel {
+                        if viewModel.weChatRecordingPhase != .draggingToCancel { viewModel.weChatRecordingPhase = .draggingToCancel }
+                    } else if isOverConvertToText {
+                        if viewModel.weChatRecordingPhase != .draggingToConvertToText { viewModel.weChatRecordingPhase = .draggingToConvertToText }
+                    } else {
+                        if viewModel.weChatRecordingPhase != .recording { viewModel.weChatRecordingPhase = .recording }
                     }
                 }
-            }
+                .onEnded { value in
+                    DebugLogger.log("Gesture.onEnded: LongPress active at end=\(value.location)")
+//                    let longPressWasSustained = value.first ?? false
+
+                    let endedOverCancel = viewModel.isDraggingInCancelOverlay  // Capture before reset
+                    let endedOverConvertToText = viewModel.isDraggingToTextOverlay  // Capture before reset
+
+                    // Reset UI drag states immediately
+                    viewModel.isDraggingInCancelOverlay = false
+                    viewModel.isDraggingToTextOverlay = false
+
+                    if isLongPressSustained {
+                        if endedOverCancel {
+                            DebugLogger.log("Gesture Ended on .draggingToCancel. Action: deleteRecord")
+                            performInputAction(.deleteRecord)
+                        } else if endedOverConvertToText {
+                            DebugLogger.log("Gesture Ended on .draggingToConvertToText. Setting intent to .convertToText and stopping transcriber.")
+                            viewModel.currentRecordingIntent = .convertToText  // Set the intent
+
+                            Task { @MainActor in  // Ensure operations on viewModel are on MainActor
+                                // Evaluate the await expression first and store its result
+                                let isTranscriberCurrentlyRecording = viewModel.transcriber.isRecording
+                                if viewModel.state == .isRecordingHold && isTranscriberCurrentlyRecording {  // Check if transcriber was indeed active
+                                    await viewModel.transcriber.stopRecording()
+                                    // The transcriber's completion handler (modified in step 2) will use the .convertToText intent
+                                    // and set weChatRecordingPhase = .asrCompleteWithText, showing the ASR results UI.
+                                } else {
+                                    // Fallback or error: transcriber wasn't active as expected, or was not in .isRecordingHold state.
+                                    DebugLogger.log("ConvertToText: Transcriber was not active or not in the expected state. Performing cleanup.")
+                                    performInputAction(.deleteRecord)  // Perform cleanup by deleting any partial recording
+                                }
+                            }
+                        } else {  // Released in the "send voice" zone (center)
+                            DebugLogger.log("Gesture Ended on .recording (normal release). Action: send")
+                            performInputAction(.send)  // This will send the voice memo directly
+                        }
+                        isLongPressSustained = false
+                        
+                    } else {  // Long press was not sustained (too short)
+                        DebugLogger.log("Gesture Ended: Long press not sustained. Current VM phase: \(viewModel.weChatRecordingPhase)")
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                           // your function
+                            showHoldToTalk = true
+                        }
+                        
+                        // If it was a very short tap, it might not even have started recording.
+                        // If it did start (e.g., state became .isRecordingHold), then cancel.
+                        if viewModel.weChatRecordingPhase == .recording || viewModel.state == .isRecordingHold {
+                            performInputAction(.deleteRecord)
+                        }
+                        // Ensure phase is reset if it wasn't a sustained action leading to send/stt/cancel
+                        if viewModel.weChatRecordingPhase != .idle && viewModel.weChatRecordingPhase != .processingASR
+                            && viewModel.weChatRecordingPhase != .asrCompleteWithText("")
+                        {  // Already handled above
+                            viewModel.weChatRecordingPhase = .idle
+                        }
+                    }
+                }
+            )
 
         Text(holdToTalkTextComputed)
             .font(.system(size: 15, weight: .medium))

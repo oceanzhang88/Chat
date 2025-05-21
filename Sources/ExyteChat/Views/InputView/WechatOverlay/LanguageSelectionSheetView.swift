@@ -6,7 +6,7 @@ struct LanguageSelectionSheetView: View {
     @Environment(\.chatTheme) private var theme
     @Binding var isPresented: Bool
     var inputViewModel: InputViewModel
-    @State private var tentativelySelectedLocale: Locale
+    @State private var tentativelySelectedLocale: Locale 
     
     // WeChat-specific styling constants
     private let sheetCornerRadius: CGFloat = 16 // Typical for bottom sheets
@@ -25,10 +25,10 @@ struct LanguageSelectionSheetView: View {
     private var listTextColor: Color { Color(UIColor.label) }
     private var checkmarkColor: Color { theme.colors.messageMyBG } // Or Color.accentColor
     
-    init(isPresented: Binding<Bool>, inputViewModel: InputViewModel) {
+    init(isPresented: Binding<Bool>, inputViewModel: InputViewModel, locale: Locale) {
         self._isPresented = isPresented
         self.inputViewModel = inputViewModel
-        self._tentativelySelectedLocale = State(initialValue: inputViewModel.transcriber.currentLocale)
+        self.tentativelySelectedLocale =  locale
     }
     
     var body: some View {
