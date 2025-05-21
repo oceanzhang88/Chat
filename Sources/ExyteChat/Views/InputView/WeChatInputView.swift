@@ -263,7 +263,9 @@ struct WeChatInputView: View {
                     } else if isOverConvertToText {
                         if viewModel.weChatRecordingPhase != .draggingToConvertToText { viewModel.weChatRecordingPhase = .draggingToConvertToText }
                     } else {
-                        if viewModel.weChatRecordingPhase != .recording { viewModel.weChatRecordingPhase = .recording }
+                        if viewModel.weChatRecordingPhase != .recording {
+                            viewModel.weChatRecordingPhase = .recording
+                        }
                     }
                 }
                 .onEnded { value in
@@ -341,6 +343,10 @@ struct WeChatInputView: View {
             .onChange(of: isLongPressSustained) { _, isActive in
                 DebugLogger.log("Long press sustained, isActive: \(isActive).")
                 if isActive {
+                    if viewModel.weChatRecordingPhase != .recording {
+                        viewModel.weChatRecordingPhase = .recording
+                    }
+                    
                     if viewModel.weChatRecordingPhase == .recording && viewModel.state != .waitingForRecordingPermission {
                         DebugLogger.log("Long press sustained & active. Triggering .recordAudioHold.")
                         performInputAction(.recordAudioHold)
