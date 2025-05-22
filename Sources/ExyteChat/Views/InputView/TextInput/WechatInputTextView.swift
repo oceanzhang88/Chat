@@ -10,12 +10,11 @@ import UIKit
 // In ChatSubmitUITextView.swift
 struct WechatInputTextView: UIViewRepresentable {
     @Binding var text: String
-    var placeholder: String
-//    @Binding var parentFocusBinding: Focusable? // This is typically globalFocusState.focus
     @EnvironmentObject var globalFocusState: GlobalFocusState
+    
+    var placeholder: String
     var inputFieldID: UUID
     var onSend: (String) -> Void
-    
     var onHeightDidChange: ((CGFloat) -> Void)?
     
     var font: UIFont = UIFont.preferredFont(forTextStyle: .body)
@@ -34,7 +33,6 @@ struct WechatInputTextView: UIViewRepresentable {
     init(
         text: Binding<String>,
         placeholder: String,
-//        parentFocusBinding: Binding<Focusable?>,
         inputFieldID: UUID,
         font: UIFont = UIFont.preferredFont(forTextStyle: .body),
         // ... other non-closure params ...
@@ -42,7 +40,6 @@ struct WechatInputTextView: UIViewRepresentable {
         onHeightDidChange: @escaping (CGFloat) -> Void // Made non-optional and last
     ) {
         self._text = text
-//        self._parentFocusBinding = parentFocusBinding
         self.placeholder = placeholder
         self.inputFieldID = inputFieldID
         self.font = font

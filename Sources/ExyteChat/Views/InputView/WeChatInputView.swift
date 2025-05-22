@@ -150,7 +150,6 @@ struct WeChatInputView: View {
             WechatInputTextView(
                 text: $viewModel.text,  // Bind to the ViewModel's text
                 placeholder: messagePlaceholderText,  // Use the localized placeholder
-//                parentFocusBinding: $globalFocusState.focus,
                 inputFieldID: inputFieldId,
                 font: UIFont.preferredFont(forTextStyle: .body)
             ) { messageText in
@@ -170,12 +169,6 @@ struct WeChatInputView: View {
                 }
             }
             .frame(height: textViewHeight)
-//            .simultaneousGesture(
-//                TapGesture().onEnded {
-//                    globalFocusState.focus = .uuid(inputFieldId)
-//                }
-//            )
-
         }
     }
 
