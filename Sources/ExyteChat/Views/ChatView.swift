@@ -174,16 +174,12 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
     }
     
     public var body: some View {
-        
         ZStack(alignment: .topLeading) { // Root ZStack for layering
-            
-//            if !isASREditingOverlayActive { // Conditionally show the main chat UI
             mainView
                 .opacity(isASREditingOverlayActive && inputViewModel.isRecordingAudioOverlay ? 0 : 1)
                 .onChange(of: inputViewSize.height) { oldHeight, newHeight in
                     DebugLogger.log( "Input view height changed: \(oldHeight) -> \(newHeight)")
                 }
-                
                 .background(chatBackground())
                 .environmentObject(keyboardState)
                 .fullScreenCover(isPresented: $viewModel.fullscreenAttachmentPresented) {
@@ -246,7 +242,7 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                     )
                     .environmentObject(globalFocusState)
                 }
-            // ---> ADD THIS MODIFIER <---
+                // ---> ADD THIS MODIFIER <---
                 .onChange(of: keyboardState.isShown) { _, isShown in
                     if isShown && !isScrolledToBottom {
                         // Post the notification to trigger the scroll
@@ -263,7 +259,6 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                         globalFocusState.focus = nil
                     }
                 }
-//            }
             
             if inputViewModel.isRecordingAudioOverlay {
                 WeChatRecordingOverlayView(
@@ -283,24 +278,24 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                         }
                     }
                 }
-            }
-        }
-        .onChange(of: inputViewModel.editingASRTextCount) { old, newValue in
-            
-            if newValue == 1 {
-                withAnimation(.easeInOut(duration: 0.2)) { // Optional animation
-                    self.isASREditingOverlayActive = true
+                .onChange(of: inputViewModel.editingASRTextCount) { old, newValue in
+                    
+                    if newValue == 1 {
+                        withAnimation(.easeInOut(duration: 0.2)) { // Optional animation
+                            self.isASREditingOverlayActive = true
+                        }
+                    }
+                    if newValue == 0 {
+                        DebugLogger.log("editingASRTextCount changed from \(old) to \(newValue)")
+                        self.isASREditingOverlayActive = false
+                    }
+                    
+                    if newValue % 2 == 1  {
+                        DebugLogger.log("ChatView: ASR Editing Overlay is now ACTIVE. Hiding main chat list.")
+                    } else {
+                        DebugLogger.log("ChatView: ASR Editing Overlay is now INACTIVE. Showing main chat list.")
+                    }
                 }
-            }
-            if newValue == 0 {
-                DebugLogger.log("editingASRTextCount changed from \(old) to \(newValue)")
-                self.isASREditingOverlayActive = false
-            }
-            
-            if newValue % 2 == 1  {
-                DebugLogger.log("ChatView: ASR Editing Overlay is now ACTIVE. Hiding main chat list.")
-            } else {
-                DebugLogger.log("ChatView: ASR Editing Overlay is now INACTIVE. Showing main chat list.")
             }
         }
     }

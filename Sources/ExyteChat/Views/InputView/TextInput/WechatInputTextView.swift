@@ -11,7 +11,8 @@ import UIKit
 struct WechatInputTextView: UIViewRepresentable {
     @Binding var text: String
     var placeholder: String
-    @Binding var parentFocusBinding: Focusable? // This is typically globalFocusState.focus
+//    @Binding var parentFocusBinding: Focusable? // This is typically globalFocusState.focus
+    @EnvironmentObject var globalFocusState: GlobalFocusState
     var inputFieldID: UUID
     var onSend: (String) -> Void
     
@@ -33,16 +34,16 @@ struct WechatInputTextView: UIViewRepresentable {
     init(
         text: Binding<String>,
         placeholder: String,
-        parentFocusBinding: Binding<Focusable?>,
+//        parentFocusBinding: Binding<Focusable?>,
         inputFieldID: UUID,
         font: UIFont = UIFont.preferredFont(forTextStyle: .body),
         // ... other non-closure params ...
         onSend: @escaping (String) -> Void,
         onHeightDidChange: @escaping (CGFloat) -> Void // Made non-optional and last
     ) {
-        _text = text
+        self._text = text
+//        self._parentFocusBinding = parentFocusBinding
         self.placeholder = placeholder
-        _parentFocusBinding = parentFocusBinding
         self.inputFieldID = inputFieldID
         self.font = font
         // ...
@@ -100,7 +101,7 @@ struct WechatInputTextView: UIViewRepresentable {
         
         // Manage focus directly based on parentFocusBinding
         // updateUIView is already on the main thread.
-        if parentFocusBinding == .uuid(inputFieldID) {
+        if globalFocusState.focus == .uuid(inputFieldID) {
             if !uiView.isFirstResponder {
                 uiView.becomeFirstResponder()
             }
@@ -133,8 +134,8 @@ struct WechatInputTextView: UIViewRepresentable {
             // Update parentFocusBinding (globalFocusState.focus)
             // This is the primary way user interaction with UITextView updates the global focus
             DispatchQueue.main.async {
-                if self.parent.parentFocusBinding != .uuid(self.parent.inputFieldID) {
-                    self.parent.parentFocusBinding = .uuid(self.parent.inputFieldID)
+                if self.parent.globalFocusState.focus != .uuid(self.parent.inputFieldID) {
+                    self.parent.globalFocusState.focus = .uuid(self.parent.inputFieldID)
                 }
             }
         }
@@ -146,8 +147,8 @@ struct WechatInputTextView: UIViewRepresentable {
             }
             // Update parentFocusBinding (globalFocusState.focus)
             DispatchQueue.main.async {
-                if self.parent.parentFocusBinding == .uuid(self.parent.inputFieldID) {
-                    self.parent.parentFocusBinding = nil
+                if self.parent.globalFocusState.focus == .uuid(self.parent.inputFieldID) {
+                    self.parent.globalFocusState.focus = nil
                 }
             }
             updateHeight(for: textView)
