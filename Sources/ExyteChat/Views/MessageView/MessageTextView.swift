@@ -19,6 +19,7 @@ struct MessageTextView: View {
     let text: String
     let messageStyler: (String) -> AttributedString
     let userType: UserType
+    let shouldShowLinkPreview: (URL) -> Bool
     let messageLinkPreviewLimit: Int
 
     var styledText: AttributedString {
@@ -35,7 +36,7 @@ struct MessageTextView: View {
     }
 
     var urlsToPreview: [URL] {
-        Array(styledText.urls.prefix(messageLinkPreviewLimit))
+        Array(styledText.urls.filter(shouldShowLinkPreview).prefix(messageLinkPreviewLimit))
     }
 
     var body: some View {
@@ -63,10 +64,14 @@ struct MessageTextView_Previews: PreviewProvider {
         MessageTextView(
             text: "Look at [this website](https://example.org)",
             messageStyler: AttributedString.init, userType: .other,
-            messageLinkPreviewLimit: 8)
+            shouldShowLinkPreview: { _ in true }, messageLinkPreviewLimit: 8)
         MessageTextView(
             text: "Look at [this website](https://example.org)",
             messageStyler: String.markdownStyler, userType: .other,
-            messageLinkPreviewLimit: 8)
+            shouldShowLinkPreview: { _ in true }, messageLinkPreviewLimit: 8)
+        MessageTextView(
+            text: "[@Dan](mention://user/123456789) look at [this website](https://example.org)!",
+            messageStyler: String.markdownStyler, userType: .other,
+            shouldShowLinkPreview: { $0.scheme != "mention" }, messageLinkPreviewLimit: 8)
     }
 }

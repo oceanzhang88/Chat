@@ -18,6 +18,7 @@ struct ChatMessageView<MessageContent: View>: View {
     let avatarSize: CGFloat
     let tapAvatarClosure: ChatView.TapAvatarClosure?
     let messageStyler: (String) -> AttributedString
+    let shouldShowLinkPreview: (URL) -> Bool
     let isDisplayingMessageMenu: Bool
     let showMessageTimeView: Bool
     let messageLinkPreviewLimit: Int
@@ -45,6 +46,7 @@ struct ChatMessageView<MessageContent: View>: View {
                     avatarSize: avatarSize,
                     tapAvatarClosure: tapAvatarClosure,
                     messageStyler: messageStyler,
+                    shouldShowLinkPreview: shouldShowLinkPreview,
                     isDisplayingMessageMenu: isDisplayingMessageMenu,
                     showMessageTimeView: showMessageTimeView,
                     messageLinkPreviewLimit: messageLinkPreviewLimit,
