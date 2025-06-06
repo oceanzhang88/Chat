@@ -150,10 +150,10 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
     @State private var inputStyle: InputBarStyle = .default
     // MARK: - Variables for Pushing Content Up with PreferenceKey
     @State private var measuredVoiceOverlayBottomHeight: CGFloat = 0
-        
+
     // New state to control main UI visibility when ASR editing overlay is active
     @State private var isASREditingOverlayActive: Bool = false
-    
+
     public init(messages: [Message],
                 chatType: ChatType = .conversation,
                 replyMode: ReplyMode = .quote,
@@ -175,9 +175,9 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
     }
     
     public var body: some View {
-        
+
         ZStack { // Root ZStack for layering
-            
+
 //            if !isASREditingOverlayActive { // Conditionally show the main chat UI
             mainView
                 .opacity(isASREditingOverlayActive && inputViewModel.isRecordingAudioOverlay ? 0 : 1)
@@ -186,7 +186,7 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                 .fullScreenCover(isPresented: $viewModel.fullscreenAttachmentPresented) {
                     let attachments = sections.flatMap { section in section.rows.flatMap { $0.message.attachments } }
                     let index = attachments.firstIndex { $0.id == viewModel.fullscreenAttachmentItem?.id }
-                    
+
                     GeometryReader { g in
                         FullscreenMediaPages(
                             viewModel: FullscreenMediaPagesViewModel(
@@ -261,7 +261,7 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                     }
                 }
 //            }
-            
+
             if inputViewModel.isRecordingAudioOverlay {
                 WeChatRecordingOverlayView(
                     inputViewModel: inputViewModel,
@@ -283,7 +283,7 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
             }
         }
         .onChange(of: inputViewModel.editingASRTextCount) { old, newValue in
-            
+
             if newValue == 1 {
                 withAnimation(.easeInOut(duration: 0.2)) { // Optional animation
                     self.isASREditingOverlayActive = true
@@ -293,7 +293,7 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                 DebugLogger.log("editingASRTextCount changed from \(old) to \(newValue)")
                 self.isASREditingOverlayActive = false
             }
-            
+
             if newValue % 2 == 1  {
                 DebugLogger.log("ChatView: ASR Editing Overlay is now ACTIVE. Hiding main chat list.")
             } else {
@@ -362,7 +362,8 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
                             .foregroundStyle(theme.colors.sendButtonBackground)
                             .shadow(color: .primary.opacity(0.1), radius: 2, y: 1)
                     }
-                    .padding(8)
+                    .padding(.trailing, MessageView.horizontalScreenEdgePadding)
+                    .padding(.bottom, 8)
                 }
             }
             
@@ -441,7 +442,7 @@ public struct ChatView<MessageContent: View, InputViewContent: View, MenuAction:
         // Apply conditional bottom padding using the measured height
         .padding(.bottom, inputViewModel.isRecordingAudioOverlay ? measuredVoiceOverlayBottomHeight : 0)
         .animation(.easeInOut(duration: 0.25), value: measuredVoiceOverlayBottomHeight)
-        
+
     }
 
     var inputView: some View {
@@ -828,4 +829,56 @@ public extension ChatView {
         view._inputStyle = State(initialValue: style)
         return view
     }
+}
+
+#Preview {
+    let romeo = User(id: "romeo", name: "Romeo Montague", avatarURL: nil, isCurrentUser: true)
+    let juliet = User(id: "juliet", name: "Juliet Capulet", avatarURL: nil, isCurrentUser: false)
+
+    let monday = try! Date.iso8601Date.parse("2025-05-12")
+    let tuesday = try! Date.iso8601Date.parse("2025-05-13")
+
+    ChatView(messages: [
+        Message(
+            id: "26tb", user: romeo, status: .read, createdAt: monday,
+            text: "And I’ll still stay, to have thee still forget"),
+        Message(
+            id: "zee6", user: romeo, status: .read, createdAt: monday,
+            text: "Forgetting any other home but this"),
+
+        Message(
+            id: "oWUN", user: juliet, status: .read, createdAt: monday,
+            text: "’Tis almost morning. I would have thee gone"),
+        Message(
+            id: "P261", user: juliet, status: .read, createdAt: monday,
+            text: "And yet no farther than a wanton’s bird"),
+        Message(
+            id: "46hu", user: juliet, status: .read, createdAt: monday,
+            text: "That lets it hop a little from his hand"),
+        Message(
+            id: "Gjbm", user: juliet, status: .read, createdAt: monday,
+            text: "Like a poor prisoner in his twisted gyves"),
+        Message(
+            id: "IhRQ", user: juliet, status: .read, createdAt: monday,
+            text: "And with a silken thread plucks it back again"),
+        Message(
+            id: "kwWd", user: juliet, status: .read, createdAt: monday,
+            text: "So loving-jealous of his liberty"),
+
+        Message(
+            id: "9481", user: romeo, status: .read, createdAt: tuesday,
+            text: "I would I were thy bird"),
+
+        Message(
+            id: "dzmY", user: juliet, status: .sent, createdAt: tuesday, text: "Sweet, so would I"),
+        Message(
+            id: "r5HH", user: juliet, status: .sent, createdAt: tuesday,
+            text: "Yet I should kill thee with much cherishing"),
+        Message(
+            id: "quy1", user: juliet, status: .sent, createdAt: tuesday,
+            text: "Good night, good night. Parting is such sweet sorrow"),
+        Message(
+            id: "Mwh6", user: juliet, status: .sent, createdAt: tuesday,
+            text: "That I shall say 'Good night' till it be morrow"),
+    ]) { draft in }
 }
